@@ -1,0 +1,77 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum OrderStatus {
+  open
+  filled
+  expired
+  cancelled
+  settled
+}
+
+model Order {
+  id             Int         @id @default(autoincrement())
+  escrowAddress  String      @unique @map("escrow_address")
+  uniqueId       String      @default("") @map("unique_id")
+  maker          String
+  inputMint      String      @map("input_mint")
+  outputMint     String      @map("output_mint")
+  inputSymbol    String      @default("") @map("input_symbol")
+  outputSymbol   String      @default("") @map("output_symbol")
+  makingAmount   String      @map("making_amount")
+  takingAmount   String      @map("taking_amount")
+  expiredAt      BigInt      @default(0) @map("expired_at")
+  createdAt      BigInt      @map("created_at")
+  status         OrderStatus @default(open)
+  fillTxSignature String?    @map("fill_tx_signature")
+  lastChecked    BigInt?     @map("last_checked")
+  failCount      Int         @default(0) @map("fail_count")
+
+  @@index([maker])
+  @@index([status])
+  @@index([createdAt])
+  @@index([maker, status])
+  @@map("orders")
+}
+
+model Fill {
+  id            Int    @id @default(autoincrement())
+  escrowAddress String @map("escrow_address")
+  txSignature   String @unique @map("tx_signature")
+  fillType      String @map("fill_type") // "full" or "partial"
+  swapAmount    BigInt @map("swap_amount")
+  outAmount     BigInt @map("out_amount")
+  filledAt      BigInt @map("filled_at")
+
+  @@index([escrowAddress])
+  @@map("fills")
+}
+
+model Transaction {
+  id          Int    @id @default(autoincrement())
+  txSignature String @unique @map("tx_signature")
+  txType      String @map("tx_type") // "fill", "expire", "cancel"
+  status      String @default("submitted") // "submitted", "confirmed", "failed"
+  createdAt   BigInt @map("created_at")
+  confirmedAt BigInt? @map("confirmed_at")
+
+  @@index([txType])
+  @@index([status])
+  @@map("transactions")
+}
+
+model Metric {
+  id        Int    @id @default(autoincrement())
+  name      String
+  value     Float
+  timestamp BigInt
+
+  @@index([name, timestamp])
+  @@map("metrics")
+}

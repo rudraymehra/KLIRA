@@ -1,0 +1,12 @@
+node_modules
+.next
+frontend
+dist
+logs
+data
+.env
+.env.local
+.git
+*.md
+target
+programs

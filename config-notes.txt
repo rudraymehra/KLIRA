@@ -2,3 +2,4 @@
 # Config note 9: add websocket connection manager
 # Config note 21: format Rust match expressions
 # Config note 33: fix formatting in instruction files
+# Config note 45: correct ATA derivation for SPL tokens

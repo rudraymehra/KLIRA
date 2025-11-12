@@ -7,3 +7,5 @@ echo 'Running check 20'
 echo 'Running check 32'
 # Helper script update 44
 echo 'Running check 44'
+# Helper script update 56
+echo 'Running check 56'

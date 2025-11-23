@@ -4,3 +4,4 @@
 # Config note 33: fix formatting in instruction files
 # Config note 45: correct ATA derivation for SPL tokens
 # Config note 57: add helper for token account lookup
+# Config note 69: add graceful shutdown handler

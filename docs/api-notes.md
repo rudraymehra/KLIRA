@@ -17,3 +17,6 @@ Reviewed endpoint behavior for edge cases.
 ### Update 66
 Reviewed endpoint behavior for edge cases.
 
+### Update 78
+Reviewed endpoint behavior for edge cases.
+

@@ -5,3 +5,4 @@
 - Protocol consideration 43: verify order state transitions
 - Protocol consideration 55: verify order state transitions
 - Protocol consideration 67: verify order state transitions
+- Protocol consideration 79: verify order state transitions

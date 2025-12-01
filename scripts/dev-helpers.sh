@@ -11,3 +11,5 @@ echo 'Running check 44'
 echo 'Running check 56'
 # Helper script update 68
 echo 'Running check 68'
+# Helper script update 80
+echo 'Running check 80'

@@ -6,3 +6,4 @@
 - fix formatting in instruction files
 - use constants for magic numbers
 - add integration test scaffold
+- handle duplicate order submission

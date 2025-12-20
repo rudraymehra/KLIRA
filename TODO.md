@@ -7,3 +7,4 @@
 - [ ] Task 62: add stricter lint rules
 - [ ] Task 74: add order expiry check helper
 - [ ] Task 86: move common utils to shared lib
+- [ ] Task 98: add graceful shutdown handler

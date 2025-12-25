@@ -7,3 +7,4 @@
 # Config note 69: add graceful shutdown handler
 # Config note 81: fix formatting in instruction files
 # Config note 93: add transaction retry with backoff
+# Config note 105: add order status enum helpers

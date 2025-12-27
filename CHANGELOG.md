@@ -7,3 +7,4 @@
 - use constants for magic numbers
 - add integration test scaffold
 - handle duplicate order submission
+- add order store unit tests

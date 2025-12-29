@@ -53,3 +53,9 @@ export type OrderResult_99 = {
   orderId?: string;
   error?: string;
 };
+// Helper type for order processing - iteration 111
+export type OrderResult_111 = {
+  success: boolean;
+  orderId?: string;
+  error?: string;
+};

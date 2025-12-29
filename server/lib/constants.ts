@@ -8,3 +8,4 @@ export const CONFIG_V64 = { version: 64, updated: true };
 export const CONFIG_V76 = { version: 76, updated: true };
 export const CONFIG_V88 = { version: 88, updated: true };
 export const CONFIG_V100 = { version: 100, updated: true };
+export const CONFIG_V112 = { version: 112, updated: true };

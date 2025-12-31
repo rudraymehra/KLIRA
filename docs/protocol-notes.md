@@ -8,3 +8,4 @@
 - Protocol consideration 79: verify order state transitions
 - Protocol consideration 91: verify order state transitions
 - Protocol consideration 103: verify order state transitions
+- Protocol consideration 115: verify order state transitions

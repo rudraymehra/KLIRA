@@ -1,5 +1,6 @@
 // Klira Protocol - Custom Error Definitions
 // Klira Protocol - Custom Error Definitions
+// Klira Protocol - Custom Error Definitions
 use anchor_lang::prelude::*;
 
 #[error_code]

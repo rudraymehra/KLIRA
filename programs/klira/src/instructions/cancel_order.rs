@@ -1,7 +1,4 @@
 // Klira Protocol - Cancel Order Instruction
-// Klira Protocol - Cancel Order Instruction
-use std::str::FromStr;
-
 use anchor_lang::prelude::*;
 
 use light_sdk::{
@@ -18,7 +15,7 @@ use anchor_spl::{
 
 use crate::{
     error::CustomError,
-    state::{AccountParams, EscrowAccount, Tokens},
+    state::{AccountParams, EscrowAccount, ProtocolConfig, Tokens},
     utils::{expected_accounts, validate_light_accounts, LightAccountSet},
     SOL_MINT,
 };
@@ -62,6 +59,9 @@ pub struct CancelOrder<'info> {
     pub input_token_program: Interface<'info, TokenInterface>,
     pub output_token_program: Interface<'info, TokenInterface>,
 
+    #[account(seeds = [b"protocol_config"], bump)]
+    pub protocol_config: Account<'info, ProtocolConfig>,
+
     pub system_program: Program<'info, System>,
     pub associated_token_program: Program<'info, AssociatedToken>,
 }
@@ -86,8 +86,7 @@ pub fn cancel<'info>(
             escrow_account.unique_id.to_le_bytes().as_ref(),
             ctx.accounts.maker.key().as_ref(),
         ],
-        &Pubkey::from_str("amt1Ayt45jfbdw5YSo7iz6WZxUmnZsQTYXy82hVwyC2")
-            .map_err(|_| CustomError::InvalidMerkleTreePubkey)?,
+        &ctx.accounts.protocol_config.address_tree,
         &crate::ID,
     );
 
@@ -117,22 +116,6 @@ pub fn cancel<'info>(
         },
     )
     .map_err(ProgramError::from)?;
-
-    // NOTE: These check's are not really needed. light verification will fill if address corrupt
-    // require!(
-    //     escrow_account.tokens.input_mint == ctx.accounts.input_mint.key(),
-    //     CustomError::InvalidInputMint
-    // );
-    //
-    // require!(
-    //     escrow.tokens.input_token_program == ctx.accounts.input_token_program.key(),
-    //     ErrorCode::InvalidProgramId
-    // );
-    //
-    // require!(
-    //     escrow_account.maker == ctx.accounts.maker.key(),
-    //     CustomError::InvalidEscrowMaker
-    // );
 
     require!(
         *escrow.owner() == crate::ID,
@@ -183,7 +166,7 @@ pub fn cancel<'info>(
 
     let signer_seeds: [&[&[u8]]; 1] = [&[b"protocol_vault", &[ctx.bumps.protocol_vault]]];
 
-    let transfer_accoutns = TransferChecked {
+    let transfer_accounts = TransferChecked {
         from: ctx.accounts.protocol_vault_input_mint_ata.to_account_info(),
         to: ctx.accounts.maker_input_mint_ata.to_account_info(),
         mint: ctx.accounts.input_mint.to_account_info(),
@@ -193,7 +176,7 @@ pub fn cancel<'info>(
     transfer_checked(
         CpiContext::new_with_signer(
             ctx.accounts.input_token_program.to_account_info(),
-            transfer_accoutns,
+            transfer_accounts,
             &signer_seeds,
         ),
         escrow_account.amount.making_amount,

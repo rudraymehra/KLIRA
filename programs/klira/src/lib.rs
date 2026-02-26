@@ -46,7 +46,7 @@ pub mod klira {
     }
 
     /// cancel an existing order by maker or cancel when expired
-    /// returns the tokens back to the maker and close the compressed escrow PDA aacount
+    /// returns the tokens back to the maker and close the compressed escrow PDA account
     pub fn cancel_order<'info>(
         ctx: Context<'_, '_, '_, 'info, CancelOrder<'info>>,
         args: CancelOrderParams,
@@ -59,7 +59,7 @@ pub mod klira {
     /// since the funds are stored in a protocol vault, and can't close it. So we will create a new
     /// temporary ata owned the Program, transfer the wsol to that ata and close it with
     /// destination = maker. this will unwrap the wsol back to SOL
-    /// friction less limit orders mf
+    /// frictionless limit orders
     pub fn expire_wsol_order<'info>(
         ctx: Context<'_, '_, '_, 'info, ExpireOrder<'info>>,
         args: CancelOrderParams,
@@ -77,8 +77,8 @@ pub mod klira {
     }
 
     /// To send the output tokens to the maker, maker needs to have an associated token account
-    /// usallay created when initializing the order but if they close we create it
-    /// take samll amount from the making amount and swap it wSOL and send it to the payer
+    /// usually created when initializing the order but if they close we create it
+    /// take small amount from the making amount and swap it wSOL and send it to the payer
     /// payer create the ATA
     #[instruction(discriminator = [0])]
     pub fn create_ata<'info>(
@@ -127,6 +127,36 @@ pub mod klira {
     ) -> Result<()> {
         close_protocol_ata::close_protocol_ata(ctx)
     }
+
+    /// Initialize the protocol configuration PDA (one-time setup)
+    pub fn initialize_config(ctx: Context<InitializeConfig>) -> Result<()> {
+        initialize_config::initialize_config(ctx)
+    }
+
+    /// Update protocol configuration parameters
+    pub fn update_config(ctx: Context<UpdateConfig>, params: UpdateConfigParams) -> Result<()> {
+        update_config::update_config(ctx, params)
+    }
+
+    /// Emergency pause — halts new orders, fills, and updates
+    pub fn pause(ctx: Context<PauseProtocol>) -> Result<()> {
+        update_config::pause(ctx)
+    }
+
+    /// Unpause the protocol
+    pub fn unpause(ctx: Context<PauseProtocol>) -> Result<()> {
+        update_config::unpause(ctx)
+    }
+
+    /// Propose authority transfer to a new address (two-step: propose then accept)
+    pub fn transfer_authority(ctx: Context<TransferAuthority>, new_authority: Pubkey) -> Result<()> {
+        update_config::transfer_authority(ctx, new_authority)
+    }
+
+    /// Accept a pending authority transfer (must be called by the pending authority)
+    pub fn accept_authority(ctx: Context<AcceptAuthority>) -> Result<()> {
+        update_config::accept_authority(ctx)
+    }
 }
 
 pub fn swap_cpi<'info>(
@@ -134,6 +164,7 @@ pub fn swap_cpi<'info>(
     accounts: &[AccountInfo<'info>],
     protocol_vault: &AccountInfo<'info>,
     jupiter_program: &AccountInfo<'info>,
+    vault_bump: u8,
 ) -> Result<()> {
     let account_metas: Vec<AccountMeta> = accounts
         .iter()
@@ -147,7 +178,7 @@ pub fn swap_cpi<'info>(
         })
         .collect();
 
-    let signer_seeds: &[&[&[u8]]] = &[&[PROTOCOL_VAULT_SEED, &[PROTOCOL_VAULT_BUMP]]];
+    let signer_seeds: &[&[&[u8]]] = &[&[PROTOCOL_VAULT_SEED, &[vault_bump]]];
 
     require_keys_eq!(
         jupiter_program.key(),

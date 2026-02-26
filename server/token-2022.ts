@@ -1,6 +1,5 @@
 // Klira Server - Token 2022 Support
-// Klira Server - Token 2022 Support
-import { Connection, PublicKey } from "@solana/web3.js";
+import { PublicKey } from "@solana/web3.js";
 import { connection, rpc } from "./app";
 import {
   ExtensionType,
@@ -11,6 +10,7 @@ import {
   unpackMint,
 } from "@solana/spl-token";
 import { get_quote } from "./jup";
+import { logger } from "./utils";
 
 export async function get_rent_amount(mint: PublicKey) {
   try {
@@ -20,7 +20,7 @@ export async function get_rent_amount(mint: PublicKey) {
     try {
       data = unpackMint(mint, account, TOKEN_2022_PROGRAM_ID);
     } catch (err) {
-      console.error("unpackMint failed:", err);
+      logger.error("unpackMint failed", { error: (err as Error).message });
       throw new Error(
         `Invalid mint or wrong program ID for ${mint.toBase58()}`
       );
@@ -48,7 +48,14 @@ export async function get_rent_amount(mint: PublicKey) {
     const rent_amount = await rpc.getMinimumBalanceForRentExemption(len);
     return rent_amount;
   } catch (err) {
-    console.error(err);
+    logger.error(`Failed to get rent amount for ${mint.toBase58()}`, {
+      error: (err as Error).message,
+    });
+    throw new Error(
+      `Failed to get rent amount for ${mint.toBase58()}: ${
+        (err as Error).message
+      }`
+    );
   }
 }
 
@@ -56,7 +63,7 @@ export async function get_rent_quote(mint: PublicKey) {
   try {
     const rent = await get_rent_amount(mint);
     const targetRent = BigInt(rent);
-    console.log("Target rent:", targetRent);
+    logger.info(`Target rent: ${targetRent}`);
 
     // Step 1: Get initial rate to estimate
     const initialInput = 1000000n; // Use a larger initial amount for better precision
@@ -66,11 +73,11 @@ export async function get_rent_quote(mint: PublicKey) {
       Number(initialInput)
     );
     const rate = Number(initialOutput) / Number(initialInput);
-    console.log(`Rate: ${rate} output per input lamport`);
+    logger.info(`Rate: ${rate} output per input lamport`);
 
     // Step 2: Calculate estimated input
     const estimatedInput = BigInt(Math.ceil(Number(targetRent) / rate));
-    console.log(`Estimated input needed: ${estimatedInput}`);
+    logger.info(`Estimated input needed: ${estimatedInput}`);
 
     // Step 3: Test the estimated amount and adjust linearly
     let currentInput = estimatedInput;
@@ -83,12 +90,17 @@ export async function get_rent_quote(mint: PublicKey) {
     let currentInAmount = BigInt(estIn);
 
     // Initial check for a good starting point
+    const MAX_ITERATIONS = 50;
     if (currentOutput <= targetRent) {
-      console.log("Estimated output too low, increasing...");
+      logger.debug("Estimated output too low, increasing...");
       const step = BigInt(
         Math.max(1, Math.floor(Number(estimatedInput) * 0.0001))
       ); // Smaller step
+      let iterations = 0;
       while (currentOutput <= targetRent) {
+        if (++iterations > MAX_ITERATIONS) {
+          throw new Error("get_rent_quote: exceeded max iterations while increasing input");
+        }
         currentInput += step;
         const { outAmount: testOutAmount, inAmount: testInAmount } =
           await get_quote(
@@ -100,11 +112,15 @@ export async function get_rent_quote(mint: PublicKey) {
         currentInAmount = BigInt(testInAmount);
       }
     } else {
-      console.log("Estimated output too high, decreasing...");
+      logger.debug("Estimated output too high, decreasing...");
       const step = BigInt(
         Math.max(1, Math.floor(Number(estimatedInput) * 0.0001))
       ); // Smaller step
+      let iterations = 0;
       while (currentOutput > targetRent) {
+        if (++iterations > MAX_ITERATIONS) {
+          throw new Error("get_rent_quote: exceeded max iterations while decreasing input");
+        }
         currentInput -= step;
         if (currentInput <= 0n) break;
         const { outAmount: testOutAmount, inAmount: testInAmount } =
@@ -177,24 +193,25 @@ export async function get_rent_quote(mint: PublicKey) {
       bestMatchOutAmount >= targetRent &&
       bestMatchOutAmount - targetRent <= MAX_BUFFER
     ) {
-      console.log("Final result:");
-      console.log(`Input amount: ${bestMatchInAmount}`);
-      console.log(`Output amount: ${bestMatchOutAmount}`);
-      console.log(`Target amount: ${targetRent}`);
-      console.log(`Buffer above target: ${bestMatchOutAmount - targetRent}`);
+      logger.info("Final result", {
+        inputAmount: bestMatchInAmount.toString(),
+        outputAmount: bestMatchOutAmount.toString(),
+        targetAmount: targetRent.toString(),
+        bufferAboveTarget: (bestMatchOutAmount - targetRent).toString(),
+      });
       return {
         inAmount: bestMatchInAmount,
         outAmount: bestMatchOutAmount,
         rent,
       };
     } else {
-      console.log(
+      logger.warn(
         "Could not find a suitable amount within buffer constraints (max 1000 lamports)."
       );
       return null;
     }
   } catch (err) {
-    console.error("Error in get_rent_quote:", err);
+    logger.error("Error in get_rent_quote", { error: (err as Error).message });
     throw err;
   }
 }

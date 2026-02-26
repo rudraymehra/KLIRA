@@ -24,3 +24,9 @@ pub use update_order::*;
 
 pub mod close_protocol_ata;
 pub use close_protocol_ata::*;
+
+pub mod initialize_config;
+pub use initialize_config::*;
+
+pub mod update_config;
+pub use update_config::*;

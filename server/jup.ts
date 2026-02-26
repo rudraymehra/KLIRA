@@ -1,11 +1,10 @@
 // Klira Server - Jupiter Integration
-// Klira Server - Jupiter Integration
 import { PublicKey, VersionedTransaction } from "@solana/web3.js";
 import axios from "axios";
-import { Escrow } from "../tests/utils/fn";
+import { Escrow } from "./lib/escrow";
 import {
-  createAssociatedTokenAccount,
   getAssociatedTokenAddress,
+  createAssociatedTokenAccount,
 } from "@solana/spl-token";
 import { payer, rpc } from "./app";
 import { logger, tokenMap } from "./utils";
@@ -22,7 +21,7 @@ export async function get_quote(
     `inputMint=${input_mint}&outputMint=${output_mint}` +
     `&amount=${amount}&slippageBps=${slippageBps}&platformFeeBps=${platformFeeBps}`;
 
-  const quote = await axios.get(quote_url);
+  const quote = await axios.get(quote_url, { timeout: 15000 });
 
   return {
     inAmount: quote.data.inAmount,
@@ -54,16 +53,16 @@ export async function get_swap_instruction(
     quote_url += `&platformFeeBps=${platformFeeBps}`;
   }
 
-  if (excludedDexLabels.length > 0) {
+  if (excludedDexLabels && excludedDexLabels.length > 0) {
     quote_url += `&excludeDexes=${excludedDexLabels.join(",")}`;
   }
 
-  const quote = await axios.get(quote_url);
+  const quote = await axios.get(quote_url, { timeout: 15000 });
 
-  console.log(quote.data.routePlan);
+  logger.debug("Route plan", { routePlan: quote.data.routePlan });
 
   let body = {
-    userPublicKey: "FFbzGFqJYhxRPTsuAJ8jjjXUTiMhAqZoGRj9x8ZCN6T7",
+    userPublicKey: payer.publicKey.toString(),
     quoteResponse: quote.data,
     ...(platformFeeBps !== 0 ? { feeAccount: fee_acc.toString() } : {}),
     // NOTE: token account is the ata of fee and input mint
@@ -71,7 +70,8 @@ export async function get_swap_instruction(
 
   let config = {
     method: "post",
-    maxBodyLength: Infinity,
+    maxBodyLength: 10 * 1024 * 1024,
+    timeout: 15000,
     url: "https://lite-api.jup.ag/swap/v1/swap-instructions",
     headers: {
       "Content-Type": "application/json",
@@ -100,7 +100,7 @@ export async function get_swap_instruction(
 
 export async function get_price(input_mint: string, output_mint: string) {
   const url = `https://lite-api.jup.ag/price/v3?ids=${input_mint},${output_mint}`;
-  const res = await axios.get(url);
+  const res = await axios.get(url, { timeout: 15000 });
 
   const inputPrice = res.data[input_mint]?.usdPrice;
   const outputPrice = res.data[output_mint]?.usdPrice;
@@ -140,11 +140,7 @@ export async function determineFillType(
     }
 
     if (Number(outAmount) >= tryTakingAmount) {
-      return { fill_type: "full", divisor };
-    }
-
-    if (divisor !== 1 && Number(outAmount) >= tryTakingAmount) {
-      return { fill_type: "partial", divisor };
+      return { fill_type: divisor === 1 ? "full" : "partial", divisor };
     }
 
     divisor *= 2;
@@ -171,7 +167,6 @@ async function create_fee_ata(mint: PublicKey) {
 
   const ata_exist = await rpc.getAccountInfo(ata);
 
-  if (ata_exist) return ata;
   if (ata_exist !== null) return ata;
 
   logger.info("creating fee token account");
@@ -190,7 +185,9 @@ const PROGRAM_ID_TO_LABEL = new Map<string, string>();
 
 (async () => {
   await loadProgramLabels();
-})();
+})().catch((err) => {
+  logger.error("Failed to load program labels", { error: err.message });
+});
 
 async function loadProgramLabels(): Promise<void> {
   const url = "https://lite-api.jup.ag/swap/v1/program-id-to-label";
@@ -207,7 +204,7 @@ async function loadProgramLabels(): Promise<void> {
     PROGRAM_ID_TO_LABEL.set(programId, label);
   }
 
-  console.log(`Loaded ${PROGRAM_ID_TO_LABEL.size} program labels.`);
+  logger.info(`Loaded ${PROGRAM_ID_TO_LABEL.size} program labels.`);
 }
 
 export async function get_best_slippage(escrow: Escrow, input_amount: number) {
@@ -226,21 +223,22 @@ export async function get_best_slippage(escrow: Escrow, input_amount: number) {
       `inputMint=${escrow.tokens.inputMint.toString()}&outputMint=${escrow.tokens.outputMint.toString()}` +
       `&amount=${input_amount}&slippageBps=${slippage_bps}${excludeDexesParam}`;
 
-    console.log(`Trying slippage: ${slippage_bps} bps`);
+    logger.debug(`Trying slippage: ${slippage_bps} bps`);
 
     try {
-      const quote = await axios.get(quote_url);
+      const quote = await axios.get(quote_url, { timeout: 15000 });
 
       let body = {
-        userPublicKey: "FFbzGFqJYhxRPTsuAJ8jjjXUTiMhAqZoGRj9x8ZCN6T7",
-        payer: "botk1pyb4oXga299ocn1U37xHrYkxty9arWjEL7QJPF",
+        userPublicKey: payer.publicKey.toString(),
+        payer: payer.publicKey.toString(),
         quoteResponse: quote.data,
         wrapAndUnwrapSol: false,
       };
 
       let config = {
         method: "post",
-        maxBodyLength: Infinity,
+        maxBodyLength: 10 * 1024 * 1024,
+        timeout: 15000,
         url: "https://lite-api.jup.ag/swap/v1/swap",
         headers: {
           "Content-Type": "application/json",
@@ -260,7 +258,7 @@ export async function get_best_slippage(escrow: Escrow, input_amount: number) {
       });
 
       if (sim.value.err === null) {
-        console.log(`✅ Found passing slippage at ${slippage_bps} bps`);
+        logger.debug(`Found passing slippage at ${slippage_bps} bps`);
         best_slippage = slippage_bps;
         break;
       } else {
@@ -268,29 +266,30 @@ export async function get_best_slippage(escrow: Escrow, input_amount: number) {
           const program_id = extractDexProgramId(sim.value.logs || []);
           const dexLabel = PROGRAM_ID_TO_LABEL.get(program_id);
 
-          if (!exclude_dexes.has(dexLabel)) {
-            console.log(`⚠️ CU exceeded in DEX: ${dexLabel}`);
-            console.log(`Adding to exclusion list and retrying...`);
+          if (dexLabel && !exclude_dexes.has(dexLabel)) {
+            logger.debug(`CU exceeded in DEX: ${dexLabel}`);
+            logger.debug(`Adding to exclusion list and retrying...`);
             exclude_dexes.add(dexLabel);
 
             // Retry with the same slippage but excluded DEX
             continue;
           }
         }
-        console.log(`❌ Simulation failed at ${slippage_bps} bps`);
+        logger.debug(`Simulation failed at ${slippage_bps} bps`);
       }
     } catch (err) {
-      console.log(`⚠️ Error at slippage ${slippage_bps}:`, err.message);
+      logger.debug(`Error at slippage ${slippage_bps}: ${err.message}`);
     }
 
     slippage_bps += 5;
   }
 
   if (!best_slippage) {
-    console.log("❌ No valid slippage found up to 50 bps");
+    logger.warn("No valid slippage found, defaulting to 50 bps");
+    best_slippage = 50;
   }
 
-  console.log(best_slippage);
+  logger.debug("Best slippage result", { best_slippage });
   return {
     best_slippage,
     excludedDexLabels: Array.from(exclude_dexes).map(getDexLabel),

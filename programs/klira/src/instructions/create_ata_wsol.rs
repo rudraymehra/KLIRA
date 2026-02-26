@@ -6,13 +6,14 @@ use anchor_spl::{
 };
 use light_sdk::{
     account::LightAccount,
+    address::v1::derive_address,
     instruction::{account_meta::CompressedAccountMeta, ValidityProof},
 };
 
 use crate::{
     error::CustomError,
     parse_jupiter_route_data,
-    state::{AccountParams, EscrowAccount, Tokens},
+    state::{AccountParams, EscrowAccount, ProtocolConfig, Tokens},
     utils::{expected_accounts, validate_light_accounts, LightAccountSet},
     LIGHT_CPI_SIGNER, PROTOCOL_VAULT_SEED,
 };
@@ -67,6 +68,9 @@ pub struct CreateTokenWsol<'info> {
     pub input_token_program: Interface<'info, TokenInterface>,
     pub output_token_program: Interface<'info, TokenInterface>,
 
+    #[account(seeds = [b"protocol_config"], bump)]
+    pub protocol_config: Account<'info, ProtocolConfig>,
+
     pub system_program: Program<'info, System>,
     pub associated_token_program: Program<'info, AssociatedToken>,
 }
@@ -83,6 +87,8 @@ pub fn create_token_account<'info>(
     ctx: Context<'_, '_, '_, 'info, CreateTokenWsol<'info>>,
     args: CreateTokenAccountWsolArgs,
 ) -> Result<()> {
+    require!(!ctx.accounts.protocol_config.paused, CustomError::ProtocolPaused);
+
     validate_light_accounts(
         ctx.remaining_accounts,
         &expected_accounts(LightAccountSet::Update),
@@ -120,9 +126,20 @@ fn light_cpi<'info>(
     ctx: &Context<'_, '_, '_, 'info, CreateTokenWsol<'info>>,
     args: &CreateTokenAccountWsolArgs,
     ata_creation_amount: u64,
-    amount_swapped: u64,
+    _amount_swapped: u64,
 ) -> Result<()> {
     let escrow_account = args.escrow_account;
+
+    // Derive address on-chain for verification (consistent with other instructions)
+    let (address, _address_seed) = derive_address(
+        &[
+            b"escrow",
+            escrow_account.unique_id.to_le_bytes().as_ref(),
+            ctx.accounts.maker.key().as_ref(),
+        ],
+        &ctx.accounts.protocol_config.address_tree,
+        &crate::ID,
+    );
 
     let mut escrow = LightAccount::<'_, EscrowAccount>::new_mut(
         &crate::ID,
@@ -145,16 +162,37 @@ fn light_cpi<'info>(
     )
     .map_err(ProgramError::from)?;
 
+    // Verify ownership and address (defense-in-depth, consistent with other instructions)
+    require!(
+        *escrow.owner() == crate::ID,
+        ErrorCode::AccountOwnedByWrongProgram
+    );
+
+    require!(
+        address == escrow.address().expect("invalid escrow address"),
+        CustomError::InvalidEscrow
+    );
+
     escrow.amount.making_amount = escrow
         .amount
         .making_amount
         .checked_sub(ata_creation_amount)
         .ok_or(ProgramError::ArithmeticOverflow)?;
 
+    // Calculate proportional taking_amount instead of trusting user-supplied data
+    // This prevents price ratio manipulation by malicious payers
+    let proportional_taking = escrow_account
+        .amount
+        .taking_amount
+        .checked_mul(ata_creation_amount)
+        .ok_or(ProgramError::ArithmeticOverflow)?
+        .checked_div(escrow_account.amount.making_amount)
+        .ok_or(ProgramError::ArithmeticOverflow)?;
+
     escrow.amount.taking_amount = escrow
         .amount
         .taking_amount
-        .checked_sub(amount_swapped)
+        .checked_sub(proportional_taking)
         .ok_or(ProgramError::ArithmeticOverflow)?;
 
     let cpi_accounts = light_sdk::cpi::CpiAccounts::new(

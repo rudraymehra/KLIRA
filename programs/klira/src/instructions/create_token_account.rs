@@ -1,5 +1,3 @@
-use std::str::FromStr;
-
 use anchor_lang::prelude::*;
 use anchor_spl::token::spl_token;
 use anchor_spl::{
@@ -17,7 +15,7 @@ use jupiter::program::Jupiter;
 
 declare_program!(jupiter);
 
-use crate::state::{AccountParams, Tokens};
+use crate::state::{AccountParams, ProtocolConfig, Tokens};
 use crate::utils::{
     expected_accounts, validate_jupiter_accounts, validate_light_accounts, LightAccountSet,
 };
@@ -85,6 +83,9 @@ pub struct CreateToken<'info> {
     pub input_token_program: Interface<'info, TokenInterface>,
     pub output_token_program: Interface<'info, TokenInterface>,
 
+    #[account(seeds = [b"protocol_config"], bump)]
+    pub protocol_config: Account<'info, ProtocolConfig>,
+
     pub system_program: Program<'info, System>,
     pub associated_token_program: Program<'info, AssociatedToken>,
     pub jupiter_program: Program<'info, Jupiter>,
@@ -105,6 +106,8 @@ pub fn create_token_account<'info>(
     ctx: Context<'_, '_, '_, 'info, CreateToken<'info>>,
     args: CreateTokenAccountArgs,
 ) -> Result<()> {
+    require!(!ctx.accounts.protocol_config.paused, CustomError::ProtocolPaused);
+
     // NOTE: if output mint is WSOL then no need the ATA creation
     if ctx.accounts.output_mint.key() == SOL_MINT {
         return Err(error!(CustomError::TokenAccountAlreadyExists));
@@ -126,7 +129,7 @@ pub fn create_token_account<'info>(
     let ata_creation_amount =
         rent.minimum_balance(ctx.accounts.maker_token_ata.to_account_info().data_len());
 
-    if jup_data.slippage_bps > 50 {
+    if jup_data.slippage_bps > ctx.accounts.protocol_config.max_slippage_bps {
         return Err(error!(CustomError::SlippageTooHigh));
     }
 
@@ -153,6 +156,7 @@ pub fn create_token_account<'info>(
         jupiter_accounts,
         &ctx.accounts.protocol_vault.to_account_info(),
         &ctx.accounts.jupiter_program,
+        ctx.bumps.protocol_vault,
     )?;
 
     ctx.accounts.protocol_wsol_ata.reload()?;
@@ -174,7 +178,7 @@ pub fn create_token_account<'info>(
             return Err(error!(CustomError::InvalidOutAmount));
         }
 
-        // 1000 lamports tolarance
+        // 1000 lamports tolerance
         if diff > ata_creation_amount + 1000 {
             return Err(error!(CustomError::InvalidOutAmount));
         }
@@ -182,12 +186,21 @@ pub fn create_token_account<'info>(
 
     transfer_tokens(&ctx, ata_creation_amount)?;
 
+    // Calculate proportional taking_amount instead of trusting user-supplied value
+    let proportional_taking = args.escrow_account
+        .amount
+        .taking_amount
+        .checked_mul(jup_data.in_amount)
+        .ok_or(ProgramError::ArithmeticOverflow)?
+        .checked_div(args.escrow_account.amount.making_amount)
+        .ok_or(ProgramError::ArithmeticOverflow)?;
+
     light_cpi(
         &ctx,
         light_accounts,
         &args,
         jup_data.in_amount,
-        args.taking_amount,
+        proportional_taking,
     )
 }
 
@@ -250,8 +263,7 @@ fn light_cpi<'info>(
             escrow_account.unique_id.to_le_bytes().as_ref(),
             ctx.accounts.maker.key().as_ref(),
         ],
-        &Pubkey::from_str("amt1Ayt45jfbdw5YSo7iz6WZxUmnZsQTYXy82hVwyC2")
-            .expect("Invalid merkle tree pubkey"),
+        &ctx.accounts.protocol_config.address_tree,
         &crate::ID,
     );
 

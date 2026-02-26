@@ -768,18 +768,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "48c757948c5ede0e46177b7add2e67155f70e33c07fea8284df6576da70b3719"
 
 [[package]]
-name = "klira"
-version = "0.1.0"
-dependencies = [
- "anchor-lang",
- "anchor-spl",
- "light-hasher",
- "light-sdk",
- "light-sdk-types",
- "solana-security-txt",
-]
-
-[[package]]
 name = "enum-ordinalize"
 version = "4.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -983,6 +971,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ecc2af9a1119c51f12a14607e783cb977bde58bc069ff0c3da1095e635d70654"
 dependencies = [
  "cpufeatures",
+]
+
+[[package]]
+name = "klira"
+version = "0.1.0"
+dependencies = [
+ "anchor-lang",
+ "anchor-spl",
+ "light-hasher",
+ "light-sdk",
+ "light-sdk-types",
+ "solana-security-txt",
 ]
 
 [[package]]

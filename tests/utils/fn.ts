@@ -95,10 +95,10 @@ export function calculateTransactionSize(tx: VersionedTransaction): number {
 }
 
 const MAINNET = new Connection(
-  "https://mainnet.helius-rpc.com/?api-key=c991f045-ba1f-4d71-b872-0ef87e7f039d"
+  process.env.TEST_MAINNET_RPC_URL || "https://mainnet.helius-rpc.com/?api-key=YOUR_API_KEY"
 );
 const DEVNET = new Connection(
-  "https://devnet.helius-rpc.com/?api-key=c991f045-ba1f-4d71-b872-0ef87e7f039d",
+  process.env.TEST_DEVNET_RPC_URL || "https://devnet.helius-rpc.com/?api-key=YOUR_API_KEY",
   "confirmed"
 );
 

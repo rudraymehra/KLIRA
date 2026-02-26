@@ -1,4 +1,4 @@
-import { parseEscrowFromBuffer } from "../../tests/utils/fn";
+import { parseEscrowFromBuffer } from "../lib/escrow";
 import { bn } from "@lightprotocol/stateless.js";
 import { payer, program, rpc } from "../app";
 import {
@@ -8,11 +8,22 @@ import {
   TransactionMessage,
   VersionedTransaction,
 } from "@solana/web3.js";
+
+let _protocolConfig: PublicKey;
+function getProtocolConfig() {
+  if (!_protocolConfig) {
+    [_protocolConfig] = PublicKey.findProgramAddressSync(
+      [Buffer.from("protocol_config")],
+      program.programId
+    );
+  }
+  return _protocolConfig;
+}
 import {
   ADDRESS_QUEUE,
   ADDRESS_TREE,
   CLOSE_ACCOUNTS,
-} from "../../tests/utils/address";
+} from "../lib/accounts";
 import { retryOperation } from "../utils";
 
 let ALT_CACHE: AddressLookupTableAccount[];
@@ -34,9 +45,11 @@ async function cache_alt() {
   ALT_CACHE = altLookups;
 }
 
-cache_alt();
-
 export async function expire(address: PublicKey) {
+  if (!ALT_CACHE) {
+    await cache_alt();
+  }
+
   let compressed_account = await retryOperation(
     () => rpc.getCompressedAccount(bn(address.toBytes())),
     3,
@@ -97,7 +110,8 @@ export async function expire(address: PublicKey) {
       outputMint: escrow_data.tokens.outputMint,
       inputTokenProgram: escrow_data.tokens.inputTokenProgram,
       outputTokenProgram: escrow_data.tokens.outputTokenProgram,
-    })
+      protocolConfig: getProtocolConfig(),
+    } as any)
     .remainingAccounts(CLOSE_ACCOUNTS)
     .instruction();
 
@@ -117,8 +131,15 @@ export async function expire(address: PublicKey) {
 }
 
 export async function expire_wsol(address: PublicKey) {
-  const compressed_account = await rpc.getCompressedAccount(
-    bn(address.toBytes())
+  if (!ALT_CACHE) {
+    await cache_alt();
+  }
+
+  const compressed_account = await retryOperation(
+    () => rpc.getCompressedAccount(bn(address.toBytes())),
+    3,
+    1000,
+    "getCompressedAccount"
   );
 
   const proof = await rpc.getValidityProofV0(
@@ -173,7 +194,8 @@ export async function expire_wsol(address: PublicKey) {
       outputMint: escrow_data.tokens.outputMint,
       inputTokenProgram: escrow_data.tokens.inputTokenProgram,
       outputTokenProgram: escrow_data.tokens.outputTokenProgram,
-    })
+      protocolConfig: getProtocolConfig(),
+    } as any)
     .remainingAccounts(CLOSE_ACCOUNTS)
     .instruction();
 

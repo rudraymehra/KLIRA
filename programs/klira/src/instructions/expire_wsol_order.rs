@@ -1,5 +1,3 @@
-use std::str::FromStr;
-
 use anchor_lang::prelude::*;
 
 use light_sdk::{
@@ -18,7 +16,7 @@ use anchor_spl::{
 use crate::{
     error::CustomError,
     instructions::{CancelOrderParams, OrderCancelled},
-    state::{EscrowAccount, Tokens},
+    state::{EscrowAccount, ProtocolConfig, Tokens},
     utils::{expected_accounts, validate_light_accounts, LightAccountSet},
     TOKEN_ACCOUNT_SIZE,
 };
@@ -78,6 +76,9 @@ pub struct ExpireOrder<'info> {
     pub input_token_program: Interface<'info, TokenInterface>,
     pub output_token_program: Interface<'info, TokenInterface>,
 
+    #[account(seeds = [b"protocol_config"], bump)]
+    pub protocol_config: Account<'info, ProtocolConfig>,
+
     pub system_program: Program<'info, System>,
     pub associated_token_program: Program<'info, AssociatedToken>,
 }
@@ -94,8 +95,7 @@ pub fn expire<'info>(
             escrow_account.unique_id.to_le_bytes().as_ref(),
             ctx.accounts.maker.key().as_ref(),
         ],
-        &Pubkey::from_str("amt1Ayt45jfbdw5YSo7iz6WZxUmnZsQTYXy82hVwyC2")
-            .map_err(|_| CustomError::InvalidMerkleTreePubkey)?,
+        &ctx.accounts.protocol_config.address_tree,
         &crate::ID,
     );
 
@@ -125,6 +125,12 @@ pub fn expire<'info>(
         },
     )
     .map_err(ProgramError::from)?;
+
+    // Verify escrow ownership
+    require!(
+        *escrow.owner() == crate::ID,
+        ErrorCode::AccountOwnedByWrongProgram
+    );
 
     let current_timestamp = Clock::get()?.unix_timestamp;
     let is_expired = escrow_account.expired_at > 0 && current_timestamp > escrow_account.expired_at;
@@ -166,42 +172,62 @@ pub fn expire<'info>(
     let rent = Rent::get()?;
     let ata_creation_amount = rent.minimum_balance(TOKEN_ACCOUNT_SIZE as usize);
 
-    // creating the token program wsol mint no need to worry about token 2022. wsol not token22
-    let temp_amount = escrow_account
-        .amount
-        .making_amount
-        .checked_sub(ata_creation_amount)
-        .ok_or(CustomError::InvalidAmount)?;
+    // Handle edge case where making_amount <= ata_creation_amount to prevent permanent fund lockup
+    let making_amount = escrow_account.amount.making_amount;
 
-    transfer_checked(
-        CpiContext::new_with_signer(
-            ctx.accounts.input_token_program.to_account_info(),
-            TransferChecked {
-                from: ctx.accounts.protocol_vault_input_mint_ata.to_account_info(),
-                to: ctx.accounts.temp_wsol_ata.to_account_info(),
-                mint: ctx.accounts.sol_mint.to_account_info(),
-                authority: ctx.accounts.protocol_vault.to_account_info(),
-            },
-            &signer_seeds,
-        ),
-        temp_amount,
-        ctx.accounts.sol_mint.decimals,
-    )?;
+    if making_amount > ata_creation_amount {
+        // Normal case: maker gets remainder, payer gets ATA rent reimbursement
+        let temp_amount = making_amount
+            .checked_sub(ata_creation_amount)
+            .ok_or(CustomError::InvalidAmount)?;
 
-    transfer_checked(
-        CpiContext::new_with_signer(
-            ctx.accounts.input_token_program.to_account_info(),
-            TransferChecked {
-                from: ctx.accounts.protocol_vault_input_mint_ata.to_account_info(),
-                to: ctx.accounts.payer_wsol_ata.to_account_info(),
-                mint: ctx.accounts.sol_mint.to_account_info(),
-                authority: ctx.accounts.protocol_vault.to_account_info(),
-            },
-            &signer_seeds,
-        ),
-        ata_creation_amount,
-        ctx.accounts.sol_mint.decimals,
-    )?;
+        transfer_checked(
+            CpiContext::new_with_signer(
+                ctx.accounts.input_token_program.to_account_info(),
+                TransferChecked {
+                    from: ctx.accounts.protocol_vault_input_mint_ata.to_account_info(),
+                    to: ctx.accounts.temp_wsol_ata.to_account_info(),
+                    mint: ctx.accounts.sol_mint.to_account_info(),
+                    authority: ctx.accounts.protocol_vault.to_account_info(),
+                },
+                &signer_seeds,
+            ),
+            temp_amount,
+            ctx.accounts.sol_mint.decimals,
+        )?;
+
+        transfer_checked(
+            CpiContext::new_with_signer(
+                ctx.accounts.input_token_program.to_account_info(),
+                TransferChecked {
+                    from: ctx.accounts.protocol_vault_input_mint_ata.to_account_info(),
+                    to: ctx.accounts.payer_wsol_ata.to_account_info(),
+                    mint: ctx.accounts.sol_mint.to_account_info(),
+                    authority: ctx.accounts.protocol_vault.to_account_info(),
+                },
+                &signer_seeds,
+            ),
+            ata_creation_amount,
+            ctx.accounts.sol_mint.decimals,
+        )?;
+    } else {
+        // Small order: all funds go to maker via temp account, payer gets nothing
+        // This prevents permanent fund lockup for orders smaller than ATA rent
+        transfer_checked(
+            CpiContext::new_with_signer(
+                ctx.accounts.input_token_program.to_account_info(),
+                TransferChecked {
+                    from: ctx.accounts.protocol_vault_input_mint_ata.to_account_info(),
+                    to: ctx.accounts.temp_wsol_ata.to_account_info(),
+                    mint: ctx.accounts.sol_mint.to_account_info(),
+                    authority: ctx.accounts.protocol_vault.to_account_info(),
+                },
+                &signer_seeds,
+            ),
+            making_amount,
+            ctx.accounts.sol_mint.decimals,
+        )?;
+    }
 
     let temp_signer_seeds: [&[&[u8]]; 1] = [&[b"temp_account", &[ctx.bumps.temp_account]]];
 

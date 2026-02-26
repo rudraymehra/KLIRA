@@ -1,5 +1,3 @@
-use std::str::FromStr;
-
 use anchor_lang::prelude::*;
 use anchor_spl::associated_token::AssociatedToken;
 use anchor_spl::token_interface::{
@@ -7,14 +5,13 @@ use anchor_spl::token_interface::{
 };
 
 use crate::error::CustomError;
-
-pub const ALLOWED_CALLER: &str = "372sKPyyiwU5zYASHzqvYY48Sv4ihEujfN5rGFKhVQ9j";
+use crate::state::ProtocolConfig;
 
 #[derive(Accounts)]
 pub struct CloseProtocolAta<'info> {
     #[account(
         mut,
-        constraint = payer.key() == Pubkey::from_str(ALLOWED_CALLER).unwrap()
+        constraint = payer.key() == protocol_config.authority @ CustomError::InvalidAuthority
     )]
     pub payer: Signer<'info>,
 
@@ -34,6 +31,9 @@ pub struct CloseProtocolAta<'info> {
         associated_token::token_program = token_program
     )]
     pub protocol_ata: InterfaceAccount<'info, TokenAccount>,
+
+    #[account(seeds = [b"protocol_config"], bump)]
+    pub protocol_config: Account<'info, ProtocolConfig>,
 
     pub token_program: Interface<'info, TokenInterface>,
 

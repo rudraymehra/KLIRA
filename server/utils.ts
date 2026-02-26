@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import fs from "fs";
 import path from "path";
 import express from "express";
@@ -46,6 +47,7 @@ export const logger = winston.createLogger({
 
 interface Metrics {
   totalRequests: number;
+  requestCount: number;
   successfulFills: number;
   failedFills: number;
   successfulExpires: number;
@@ -56,6 +58,7 @@ interface Metrics {
 
 export const metrics: Metrics = {
   totalRequests: 0,
+  requestCount: 0,
   successfulFills: 0,
   failedFills: 0,
   successfulExpires: 0,
@@ -71,7 +74,7 @@ export const requestLogger = (
   next: express.NextFunction
 ) => {
   const startTime = performance.now();
-  const requestId = Math.random().toString(36).substring(7);
+  const requestId = crypto.randomUUID();
 
   res.locals.requestId = requestId;
   res.locals.startTime = startTime;
@@ -87,8 +90,9 @@ export const requestLogger = (
     res.on("finish", () => {
       const responseTime = performance.now() - startTime;
       metrics.totalRequests++;
+      metrics.requestCount++;
       metrics.averageResponseTime =
-        (metrics.averageResponseTime + responseTime) / 2;
+        (metrics.averageResponseTime * (metrics.requestCount - 1) + responseTime) / metrics.requestCount;
       metrics.lastActivity = new Date().toISOString();
 
       logger.info("Request completed", {
@@ -136,7 +140,7 @@ export const errorHandler = (
 
   if (!res.headersSent) {
     res.status(statusCode).json({
-      error: error.message,
+      error: statusCode >= 500 ? "Internal server error" : error.message,
       requestId,
       timestamp: new Date().toISOString(),
     });
@@ -194,7 +198,7 @@ export const tokenMap: Map<string, Token> = new Map(
   tokens.map((t) => [t.id, t])
 );
 
-export async function caluclate_target_ratio(
+export async function calculate_target_ratio(
   making_amount: number,
   taking_amount: number,
   making_token: string,
@@ -222,7 +226,7 @@ async function fetch_token_data(mint: string) {
 
   // Fetch from Jupiter API
   const url = `https://lite-api.jup.ag/tokens/v2/search?query=${mint}`;
-  const res = await fetch(url);
+  const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
   const data = await res.json();
 
   if (!Array.isArray(data) || data.length === 0) {
@@ -252,7 +256,10 @@ export async function getComputeUnitsUsed(
     replaceRecentBlockhash: true,
   });
 
-  console.log("simulation", sim);
+  logger.debug("Transaction simulation result", {
+    err: sim.value.err,
+    unitsConsumed: sim.value.unitsConsumed,
+  });
 
   if (sim.value.err) {
     throw new Error("Simulation failed: " + JSON.stringify(sim.value.err));

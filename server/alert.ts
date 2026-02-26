@@ -1,30 +1,33 @@
 // Klira Server - Telegram Alert System
-// Klira Server - Telegram Alert System
 import { Telegraf } from "telegraf";
 import axios from "axios";
+import { logger } from "./utils";
 
-export const bot = new Telegraf(
-  "7887692704:AAE9g8oEGMB-REyHu7ZITvzrVLOG10f11Mc"
-);
+const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 
-const ids = [1520778961];
+if (!TELEGRAM_BOT_TOKEN) {
+  logger.warn("TELEGRAM_BOT_TOKEN not set - alerts disabled");
+}
+
+export const bot = TELEGRAM_BOT_TOKEN
+  ? new Telegraf(TELEGRAM_BOT_TOKEN)
+  : null;
+
+const ids = TELEGRAM_CHAT_ID ? [Number(TELEGRAM_CHAT_ID)] : [];
 
 const CHECK_INTERVAL = 30_000; // 30s
 const AUTO_RESUME_DELAY = 60 * 60 * 1000; // 1 hour
 
-const ENDPOINTS = [
-  "http://localhost:4000",
-  "http://localhost:4000/health",
-  "http://localhost:4001/api/v1/status",
-];
+const SERVER_URL = process.env.SERVER_URL || "http://localhost:4000";
+const MATCHING_ENGINE_URL =
+  process.env.MATCHING_ENGINE_URL || "http://localhost:4001";
+const ENDPOINTS = [`${SERVER_URL}`, `${SERVER_URL}/health`];
 
 let monitoring = true;
 let alerting = false;
 let stopTimestamp: number | null = null;
 let alertInterval: NodeJS.Timeout | null = null; // Store interval reference
-let socket_down_count = 0;
-
-let fill_check = 100;
 
 async function checkEndpoints() {
   if (!monitoring) return;
@@ -36,55 +39,16 @@ async function checkEndpoints() {
       if (res.status !== 200) {
         await sendAlert(`${url} returned status ${res.status}`);
       } else if (url.includes("/health") && res.data?.status !== "healthy") {
-        if (res.data.failedFills > fill_check) {
-          fill_check += 100;
-          await sendAlert("Fill Failing check /health");
-        }
         await sendAlert(`${url} unhealthy: ${JSON.stringify(res.data)}`);
-      } else if (url.includes("/status")) {
-        const statusChecks = [
-          {
-            key: "is_running",
-            message: "The matching engine appears to be down.",
-          },
-          {
-            key: "logs_socket_running",
-            message: "The logs socket appears to be down.",
-          },
-          {
-            key: "pyth_running",
-            message: "The pyth service appears to be down.",
-          },
-          {
-            key: "jup_running",
-            message: "The jup service appears to be down.",
-          },
-        ];
-
-        for (const check of statusChecks) {
-          if (check.key === "logs_socket_running") {
-            if (!res.data?.logs_socket_running) {
-              socket_down_count++;
-              if (socket_down_count > 10) {
-                await sendAlert(
-                  `Endpoint ${url} is not running. ${check.message}`
-                );
-                break;
-              }
-            } else {
-              socket_down_count = 0;
-            }
-          } else if (!res.data?.[check.key]) {
-            await sendAlert(`Endpoint ${url} is not running. ${check.message}`);
-            break;
-          }
-        }
       }
     } catch (err: any) {
       await sendAlert(
         `Something is down. Endpoint check failed for ${url}. Error Message: ${err.message}`
       );
-      console.log(err);
+      logger.error("Endpoint check error", {
+        error: err.message,
+        stack: err.stack,
+      });
     }
   }
 }
@@ -93,11 +57,21 @@ async function sendAlert(message: string) {
   // Don't send alerts if monitoring is stopped
   if (!monitoring) return;
 
-  if (!alerting) {
+  // Don't send alerts if no chat ID is configured
+  if (ids.length === 0) {
+    logger.warn("TELEGRAM_CHAT_ID not set — alert suppressed", { message });
+    return;
+  }
+
+  if (!alerting && bot) {
     alerting = true;
 
     // Send the first alert immediately
-    await bot.telegram.sendMessage(ids[0], message);
+    try {
+      await bot.telegram.sendMessage(ids[0], message);
+    } catch (err) {
+      logger.error("Failed to send Telegram alert", { error: (err as Error).message });
+    }
 
     // Then send every 1 minute
     alertInterval = setInterval(async () => {
@@ -105,7 +79,13 @@ async function sendAlert(message: string) {
         stopAlerting();
         return;
       }
-      await bot.telegram.sendMessage(ids[0], message);
+      if (ids.length > 0 && bot) {
+        try {
+          await bot.telegram.sendMessage(ids[0], message);
+        } catch (err) {
+          logger.error("Failed to send Telegram alert", { error: (err as Error).message });
+        }
+      }
     }, 60 * 1000);
   }
 }
@@ -134,10 +114,12 @@ setInterval(async () => {
       if (allHealthy) {
         monitoring = true;
         stopTimestamp = null;
-        await bot.telegram.sendMessage(
-          ids[0],
-          "Monitoring resumed automatically after 1 hour of stop (all endpoints healthy)."
-        );
+        if (ids.length > 0 && bot) {
+          await bot.telegram.sendMessage(
+            ids[0],
+            "Monitoring resumed automatically after 1 hour of stop (all endpoints healthy)."
+          );
+        }
       }
     } catch {
       // If still unhealthy, keep waiting.
@@ -145,63 +127,75 @@ setInterval(async () => {
   }
 }, 60_000);
 
-bot.start((ctx) => ctx.reply("Monitoring bot started"));
+if (bot) {
+  // Authorization middleware: restrict all commands to the configured chat
+  bot.use((ctx, next) => {
+    if (!TELEGRAM_CHAT_ID) {
+      logger.warn("TELEGRAM_CHAT_ID not set — rejecting bot command");
+      return; // Require chat ID to be configured
+    }
+    if (ctx.chat?.id.toString() !== TELEGRAM_CHAT_ID) {
+      return; // silently ignore unauthorized chats
+    }
+    return next();
+  });
 
-bot.command("status", (ctx) =>
-  ctx.reply(`Monitoring: ${monitoring ? "ON" : "OFF"} | Alerting: ${alerting}`)
-);
+  bot.start((ctx) => ctx.reply("Monitoring bot started"));
 
-bot.command("stop", (ctx) => {
-  monitoring = false;
-  stopAlerting();
-  stopTimestamp = Date.now();
-  ctx.reply("Monitoring and alerts stopped");
-});
+  bot.command("status", (ctx) =>
+    ctx.reply(`Monitoring: ${monitoring ? "ON" : "OFF"} | Alerting: ${alerting}`)
+  );
 
-bot.command("resume", (ctx) => {
-  monitoring = true;
-  stopAlerting();
-  stopTimestamp = null;
-  socket_down_count = 0; // Reset counter
-  ctx.reply("Monitoring resumed");
-});
+  bot.command("stop", (ctx) => {
+    monitoring = false;
+    stopAlerting();
+    stopTimestamp = Date.now();
+    ctx.reply("Monitoring and alerts stopped");
+  });
 
-bot.command("pause", (ctx) => {
-  monitoring = false;
-  stopAlerting();
-  ctx.reply("Monitoring paused");
-});
+  bot.command("resume", (ctx) => {
+    monitoring = true;
+    stopAlerting();
+    stopTimestamp = null;
+    ctx.reply("Monitoring resumed");
+  });
 
+  bot.command("pause", (ctx) => {
+    monitoring = false;
+    stopAlerting();
+    ctx.reply("Monitoring paused");
+  });
+}
+
+if (bot) {
 bot.command("health", async (ctx) => {
   try {
-    const res = await axios.get("http://localhost:4000/health", {
-      timeout: 6000,
-    });
-    const data = res.data;
+    const [healthRes, metricsRes] = await Promise.allSettled([
+      axios.get(`${SERVER_URL}/health`, { timeout: 6000 }),
+      axios.get(`${SERVER_URL}/metrics`, {
+        timeout: 6000,
+        headers: { "x-api-key": process.env.KEEPER_API_KEY || "" },
+      }),
+    ]);
 
-    const msg = `
-Status: ${data.status}
-Timestamp: ${data.timestamp}
-Uptime: ${data.uptime.toFixed(2)}s
+    const health =
+      healthRes.status === "fulfilled" ? healthRes.value.data : null;
+    const metrics =
+      metricsRes.status === "fulfilled" ? metricsRes.value.data : null;
 
-Memory:
-- RSS: ${(data.memory.rss / 1024 / 1024).toFixed(2)} MB
-- Heap Total: ${(data.memory.heapTotal / 1024 / 1024).toFixed(2)} MB
-- Heap Used: ${(data.memory.heapUsed / 1024 / 1024).toFixed(2)} MB
-- External: ${(data.memory.external / 1024 / 1024).toFixed(2)} MB
-- Array Buffers: ${(data.memory.arrayBuffers / 1024).toFixed(2)} KB
+    let msg = "";
 
-Metrics:
-- Total Requests: ${data.metrics.totalRequests}
-- Successful Fills: ${data.metrics.successfulFills}
-- Failed Fills: ${data.metrics.failedFills}
-- Successful Expires: ${data.metrics.successfulExpires}
-- Failed Expires: ${data.metrics.failedExpires}
-- Avg Response Time: ${data.metrics.averageResponseTime.toFixed(2)} ms
-- Last Activity: ${data.metrics.lastActivity}
-`;
+    if (health) {
+      msg += `Status: ${health.status}\nTimestamp: ${health.timestamp}\nUptime: ${health.uptime.toFixed(2)}s\n`;
+    } else {
+      msg += "Health endpoint unreachable\n";
+    }
 
-    await ctx.reply(msg);
+    if (metrics) {
+      msg += `\nMetrics:\n- Total Requests: ${metrics.totalRequests}\n- Successful Fills: ${metrics.successfulFills}\n- Failed Fills: ${metrics.failedFills}\n- Successful Expires: ${metrics.successfulExpires}\n- Failed Expires: ${metrics.failedExpires}\n- Avg Response Time: ${metrics.averageResponseTime?.toFixed(2) ?? "N/A"} ms\n- Last Activity: ${metrics.lastActivity}\n`;
+    }
+
+    await ctx.reply(msg || "No data available");
   } catch (err: any) {
     await ctx.reply(`Failed to fetch health: ${err.message}`);
   }
@@ -211,8 +205,8 @@ bot.command("info", async (ctx) => {
   try {
     // Collect data only from the new endpoints
     const [statusRes, pairsRes] = await Promise.all([
-      axios.get("http://localhost:4001/api/v1/status", { timeout: 6000 }),
-      axios.get("http://localhost:4001/api/v1/pairs", { timeout: 6000 }),
+      axios.get(`${MATCHING_ENGINE_URL}/api/v1/status`, { timeout: 6000 }),
+      axios.get(`${MATCHING_ENGINE_URL}/api/v1/pairs`, { timeout: 6000 }),
     ]);
 
     const status = statusRes.data;
@@ -249,9 +243,26 @@ bot.command("code", async (ctx) => {
       maxUses = parseInt(args[0]);
     }
 
-    const url = `https://www.klira.xyz/api/create?createdBy=cmfza8ryb0001kw047slwm80j&password=AP40HP1138&maxUses=${maxUses}`;
+    const password = process.env.KLIRA_CODE_PASSWORD;
+    if (!password) {
+      throw new Error("KLIRA_CODE_PASSWORD not set in environment");
+    }
+    const createdBy = process.env.KLIRA_CODE_CREATED_BY;
+    if (!createdBy) {
+      logger.warn(
+        "KLIRA_CODE_CREATED_BY not set, skipping invite code attribution"
+      );
+      await ctx.telegram.editMessageText(
+        ctx.chat.id,
+        loadingMessage.message_id,
+        undefined,
+        "Cannot generate code: KLIRA_CODE_CREATED_BY is not configured."
+      );
+      return;
+    }
+    const url = `https://www.klira.xyz/api/create`;
 
-    const res = await axios.get(url);
+    const res = await axios.post(url, { createdBy, password, maxUses });
 
     await ctx.telegram.editMessageText(
       ctx.chat.id,
@@ -266,11 +277,12 @@ bot.command("code", async (ctx) => {
       undefined,
       `Failed to generate code. Error: ${err.message}`
     );
-    console.error(err);
+    logger.error("Failed to generate invite code", {
+      error: err.message,
+      stack: err.stack,
+    });
   }
 });
-
-setInterval(checkEndpoints, CHECK_INTERVAL);
 
 bot.telegram.setMyCommands([
   { command: "health", description: "Show ts server /health endpoint data" },
@@ -284,5 +296,12 @@ bot.telegram.setMyCommands([
   { command: "resume", description: "Resume monitoring" },
   { command: "pause", description: "Pause monitoring" },
 ]);
+} // end if (bot)
 
-bot.launch();
+setInterval(checkEndpoints, CHECK_INTERVAL);
+
+if (bot) {
+  bot.launch().catch((err) => {
+    logger.error("Failed to launch Telegram bot", { error: err.message });
+  });
+}

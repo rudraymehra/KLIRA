@@ -1,6 +1,4 @@
 // Klira Protocol - Custom Error Definitions
-// Klira Protocol - Custom Error Definitions
-// Klira Protocol - Custom Error Definitions
 use anchor_lang::prelude::*;
 
 #[error_code]
@@ -20,7 +18,7 @@ pub enum CustomError {
     #[msg("Invalid token account")]
     InvalidTokenAccount,
 
-    #[msg("Invalid output amount: exactly 2,039,280 lamports required to create a token account")]
+    #[msg("Invalid output amount: must match the required rent-exempt minimum to create a token account")]
     InvalidOutAmount,
 
     #[msg("Token account already exists")]
@@ -106,12 +104,30 @@ pub enum CustomError {
     #[msg("Token account is not empty")]
     TokenAccountNotEmpty,
 
-    #[msg("Mekle Tree pubkey is invalid")]
+    #[msg("Merkle Tree pubkey is invalid")]
     InvalidMerkleTreePubkey,
 
-    #[msg("Output tokens not recived in Jupiter Swap")]
+    #[msg("Output tokens not received in Jupiter Swap")]
     NoTokensReceived,
 
-    #[msg("Output Sol amount to Small to complete the ixs")]
+    #[msg("Output SOL amount too small to complete the instructions")]
     SwapOutputTooSmall,
+
+    #[msg("Protocol is paused")]
+    ProtocolPaused,
+
+    #[msg("Invalid authority: must be config authority")]
+    InvalidAuthority,
+
+    #[msg("Fee BPS exceeds maximum")]
+    FeeTooHigh,
+
+    #[msg("Invalid configuration parameter")]
+    InvalidConfigParam,
+
+    #[msg("Order has expired and cannot be filled")]
+    OrderExpired,
+
+    #[msg("Partial fill amount too small")]
+    FillTooSmall,
 }

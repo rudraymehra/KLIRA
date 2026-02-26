@@ -1,5 +1,3 @@
-use std::str::FromStr;
-
 use anchor_lang::prelude::*;
 use anchor_spl::{
     associated_token::AssociatedToken,
@@ -15,12 +13,12 @@ use crate::{
     error::CustomError,
     instructions::{FillEvent, FillOrderParams, FillType},
     parse_jupiter_route_data,
-    state::{EscrowAccount, Tokens},
+    state::{EscrowAccount, ProtocolConfig, Tokens},
     swap_cpi,
     utils::{
         expected_accounts, validate_jupiter_accounts, validate_light_accounts, LightAccountSet,
     },
-    FEE_ACCOUNT, PROTOCOL_VAULT_SEED, TOKEN_ACCOUNT_SIZE,
+    FEE_DENOMINATOR, PROTOCOL_VAULT_SEED, TOKEN_ACCOUNT_SIZE,
 };
 
 use jupiter::program::Jupiter;
@@ -85,6 +83,9 @@ pub struct FillOrderWSol<'info> {
     #[account(address = spl_token::id())]
     pub output_token_program: Interface<'info, TokenInterface>,
 
+    #[account(seeds = [b"protocol_config"], bump)]
+    pub protocol_config: Account<'info, ProtocolConfig>,
+
     pub system_program: Program<'info, System>,
     pub associated_token_program: Program<'info, AssociatedToken>,
     pub jupiter_program: Program<'info, Jupiter>,
@@ -94,6 +95,21 @@ pub fn fill<'info>(
     ctx: Context<'_, '_, '_, 'info, FillOrderWSol<'info>>,
     args: FillOrderParams,
 ) -> Result<()> {
+    require!(!ctx.accounts.protocol_config.paused, CustomError::ProtocolPaused);
+
+    // Validate maker before any transfers
+    let escrow_account = args.escrow_account;
+    require!(escrow_account.maker == ctx.accounts.maker.key(), CustomError::InvalidEscrowMaker);
+
+    // Check expiration - expired orders cannot be filled
+    if escrow_account.expired_at > 0 {
+        let current_timestamp = Clock::get()?.unix_timestamp;
+        require!(
+            current_timestamp <= escrow_account.expired_at,
+            CustomError::OrderExpired
+        );
+    }
+
     let remaining = &ctx.remaining_accounts;
     let light_accounts = &remaining[0..10];
 
@@ -107,11 +123,11 @@ pub fn fill<'info>(
 
     let in_amount = jup_data.in_amount;
 
-    if jup_data.slippage_bps > 50 {
+    if jup_data.slippage_bps > ctx.accounts.protocol_config.max_slippage_bps {
         return Err(error!(CustomError::SlippageTooHigh));
     }
 
-    if jup_data.platform_fee_bps != 10 {
+    if jup_data.platform_fee_bps as u16 != ctx.accounts.protocol_config.fee_bps {
         return Err(error!(CustomError::InvalidPlatformFeeBps));
     }
 
@@ -128,7 +144,7 @@ pub fn fill<'info>(
         ctx.accounts.sol_mint.key(),
         ctx.accounts.input_token_program.key(),
         ctx.accounts.output_token_program.key(),
-        Some(FEE_ACCOUNT),
+        Some(ctx.accounts.protocol_config.fee_account),
     )?;
 
     let balance_before_swap = ctx.accounts.protocol_vault_output_mint_ata.amount;
@@ -138,6 +154,7 @@ pub fn fill<'info>(
         jupiter_accounts,
         &ctx.accounts.protocol_vault.to_account_info(),
         &ctx.accounts.jupiter_program,
+        ctx.bumps.protocol_vault,
     )?;
 
     ctx.accounts.protocol_vault_output_mint_ata.reload()?;
@@ -209,7 +226,7 @@ pub fn fill<'info>(
         &temp_signer_seeds,
     ))?;
 
-    let escrow_account = args.escrow_account;
+    let fee_bps = ctx.accounts.protocol_config.fee_bps as u64;
 
     match args.fill_type {
         FillType::Full => {
@@ -220,12 +237,13 @@ pub fn fill<'info>(
             let expected_after_fee = escrow_account
                 .amount
                 .taking_amount
-                .checked_mul(999)
+                .checked_mul(FEE_DENOMINATOR.checked_sub(fee_bps).ok_or(ProgramError::ArithmeticOverflow)?)
                 .ok_or(ProgramError::ArithmeticOverflow)?
-                .checked_div(1000)
+                .checked_div(FEE_DENOMINATOR)
                 .ok_or(ProgramError::ArithmeticOverflow)?;
 
-            if expected_after_fee > diff {
+            // Check against temp_amount (what maker actually receives), not diff
+            if expected_after_fee > temp_amount {
                 return Err(error!(CustomError::LowTakingAmount));
             }
 
@@ -248,6 +266,13 @@ pub fn fill<'info>(
                 return Err(ProgramError::InsufficientFunds.into());
             }
 
+            // Enforce minimum partial fill of 10% of making_amount
+            let min_fill = escrow_account.amount.making_amount / 10;
+            if min_fill > 0 {
+                require!(in_amount >= min_fill, CustomError::FillTooSmall);
+            }
+
+            // Calculate pro-rata taking_amount
             let taking_amount = escrow_account
                 .amount
                 .taking_amount
@@ -256,17 +281,22 @@ pub fn fill<'info>(
                 .checked_div(escrow_account.amount.making_amount)
                 .ok_or(ProgramError::ArithmeticOverflow)?;
 
+            // Ensure pro-rata taking_amount is non-zero
+            require!(taking_amount > 0, CustomError::InvalidAmount);
+
             let expected_after_fee = taking_amount
-                .checked_mul(999)
+                .checked_mul(FEE_DENOMINATOR.checked_sub(fee_bps).ok_or(ProgramError::ArithmeticOverflow)?)
                 .ok_or(ProgramError::ArithmeticOverflow)?
-                .checked_div(1000)
+                .checked_div(FEE_DENOMINATOR)
                 .ok_or(ProgramError::ArithmeticOverflow)?;
 
-            if expected_after_fee > diff {
+            // Check against temp_amount (what maker actually receives), not diff
+            if expected_after_fee > temp_amount {
                 return Err(error!(CustomError::LowTakingAmount));
             }
 
-            let escrow_address = light_cpi_update(&ctx, light_accounts, &args, in_amount, diff)?;
+            // Pass pro-rata taking_amount (not diff) to preserve correct escrow price ratio
+            let escrow_address = light_cpi_update(&ctx, light_accounts, &args, in_amount, taking_amount)?;
 
             emit!(FillEvent {
                 escrow_address,
@@ -298,8 +328,7 @@ fn light_cpi_close<'info>(
             escrow_account.unique_id.to_le_bytes().as_ref(),
             ctx.accounts.maker.key().as_ref(),
         ],
-        &Pubkey::from_str("amt1Ayt45jfbdw5YSo7iz6WZxUmnZsQTYXy82hVwyC2")
-            .map_err(|_| CustomError::InvalidMerkleTreePubkey)?,
+        &ctx.accounts.protocol_config.address_tree,
         &crate::ID,
     );
 
@@ -376,8 +405,7 @@ pub fn light_cpi_update<'info>(
             escrow_account.unique_id.to_le_bytes().as_ref(),
             ctx.accounts.maker.key().as_ref(),
         ],
-        &Pubkey::from_str("amt1Ayt45jfbdw5YSo7iz6WZxUmnZsQTYXy82hVwyC2")
-            .map_err(|_| CustomError::InvalidMerkleTreePubkey)?,
+        &ctx.accounts.protocol_config.address_tree,
         &crate::ID,
     );
 

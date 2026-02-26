@@ -1,6 +1,7 @@
 // Klira Server - Main Application Entry Point
-// Klira Server - Main Application Entry Point
-// Klira Server - Main Application Entry Point
+import * as dotenv from "dotenv";
+dotenv.config();
+
 import { AnchorProvider, BN, Program, Wallet } from "@coral-xyz/anchor";
 import { Klira } from "../klira";
 import IDL from "../klira.json";
@@ -11,9 +12,10 @@ import {
   VersionedTransaction,
 } from "@solana/web3.js";
 
-import express from "express";
+import express, { Router } from "express";
+import helmet from "helmet";
 import { bn, createRpc } from "@lightprotocol/stateless.js";
-import { parseEscrowFromBuffer } from "../tests/utils/fn";
+import { parseEscrowFromBuffer } from "./lib/escrow";
 import {
   determineFillType,
   get_best_slippage,
@@ -23,9 +25,8 @@ import {
 import { create_token_ata } from "./instructions/create_ata";
 import { fill, fill_wsol } from "./instructions/fill";
 import { expire, expire_wsol } from "./instructions/expire";
-import * as dotenv from "dotenv";
 import {
-  caluclate_target_ratio,
+  calculate_target_ratio,
   errorHandler,
   logger,
   metrics,
@@ -33,21 +34,42 @@ import {
   retryOperation,
 } from "./utils";
 import { bot } from "./alert";
+import {
+  addOrder,
+  getAllOrders,
+  getOrdersByWallet,
+  updateOrderStatus,
+  type TrackedOrder,
+} from "./order-store";
+import { startKeeper, stopKeeper } from "./keeper";
+import { publicLimiter, internalLimiter } from "./middleware/rateLimit";
+import { requireApiKey } from "./middleware/auth";
+import {
+  createOrderSchema,
+  orderQuerySchema,
+  fillExpireBodySchema,
+  validateBody,
+  validateQuery,
+} from "./middleware/validate";
 
-bot.use((ctx, next) => {
-  console.log(ctx.message);
-  return next();
-});
-
-dotenv.config();
+if (bot) {
+  bot.use((ctx, next) => {
+    logger.debug("Telegram message received", { message: ctx.message });
+    return next();
+  });
+}
 
 if (!process.env.KEY) {
   logger.error("Missing required environment variable: KEY");
   process.exit(1);
 }
 
-const url =
-  "https://mainnet.helius-rpc.com/?api-key=4e4da1cd-e329-41ee-86f7-6e7f55e807dc";
+if (!process.env.RPC_URL) {
+  logger.error("Missing required environment variable: RPC_URL");
+  process.exit(1);
+}
+
+const url = process.env.RPC_URL;
 
 export const connection = new Connection(url);
 
@@ -73,16 +95,110 @@ export const SOL_MINT = new PublicKey(
 );
 
 const app = express();
+app.set('trust proxy', 1);
+
+// ── Security headers ────────────────────────────────────
+app.use(helmet());
+
+// ── Request body size limits ────────────────────────────
+app.use(express.json({ limit: "1mb" }));
+
+// ── CORS - allow configured frontend origins ────────────
+app.use((req, res, next) => {
+  res.setHeader("Vary", "Origin");
+  const allowedOrigins = (
+    process.env.ALLOWED_ORIGINS || "http://localhost:3000"
+  ).split(",");
+  const origin = req.headers.origin;
+  if (origin && allowedOrigins.includes(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+  }
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, x-api-key");
+  if (req.method === "OPTIONS") {
+    res.sendStatus(204);
+    return;
+  }
+  next();
+});
 
 app.use(requestLogger);
 
+// ── Health check (unversioned, for load balancers) ──────
 app.get("/", (req, res) => {
-  res.send("Hello World!");
+  res.send("Klira Trading Server");
 });
 
-app.get("/health", async (req, res) => {
+// ── API v1 Router ───────────────────────────────────────
+const v1 = Router();
+
+// ── Order Registration ──────────────────────────────────
+v1.post(
+  "/orders",
+  publicLimiter,
+  validateBody(createOrderSchema),
+  async (req, res) => {
+    try {
+      const {
+        escrowAddress,
+        uniqueId,
+        maker,
+        inputMint,
+        outputMint,
+        inputSymbol,
+        outputSymbol,
+        makingAmount,
+        takingAmount,
+        expiredAt,
+      } = req.body;
+
+      const order: TrackedOrder = {
+        escrowAddress,
+        uniqueId: uniqueId || "",
+        maker,
+        inputMint,
+        outputMint,
+        inputSymbol: inputSymbol || "",
+        outputSymbol: outputSymbol || "",
+        makingAmount,
+        takingAmount,
+        expiredAt: expiredAt || 0,
+        createdAt: Date.now(),
+        status: "open",
+      };
+
+      await addOrder(order);
+      res.status(201).json({ success: true, escrowAddress });
+    } catch (error) {
+      logger.error("Failed to register order", {
+        error: (error as Error).message,
+      });
+      res.status(500).json({ error: "Failed to register order" });
+    }
+  }
+);
+
+v1.get(
+  "/orders",
+  publicLimiter,
+  validateQuery(orderQuerySchema),
+  async (req, res) => {
+    const { wallet } = req.query;
+    const limit = Math.min(Math.max(parseInt(req.query.limit as string) || 100, 1), 1000);
+    const offset = Math.max(parseInt(req.query.offset as string) || 0, 0);
+
+    let orders: TrackedOrder[];
+    if (wallet) {
+      orders = await getOrdersByWallet(wallet as string);
+    } else {
+      orders = await getAllOrders();
+    }
+    res.json(orders.slice(offset, offset + limit));
+  }
+);
+
+v1.get("/health", publicLimiter, async (req, res) => {
   try {
-    // Quick health checks
     await Promise.race([
       connection.getSlot(),
       new Promise((_, reject) =>
@@ -94,8 +210,6 @@ app.get("/health", async (req, res) => {
       status: "healthy",
       timestamp: new Date().toISOString(),
       uptime: process.uptime(),
-      memory: process.memoryUsage(),
-      metrics,
     };
 
     res.json(health);
@@ -109,7 +223,7 @@ app.get("/health", async (req, res) => {
   }
 });
 
-app.get("/metrics", (req, res) => {
+v1.get("/metrics", requireApiKey, (req, res) => {
   res.json({
     ...metrics,
     timestamp: new Date().toISOString(),
@@ -117,8 +231,12 @@ app.get("/metrics", (req, res) => {
   });
 });
 
-app.get(
+// ── Fill endpoint (POST, authenticated) ─────────────────
+v1.post(
   "/fill",
+  internalLimiter,
+  requireApiKey,
+  validateBody(fillExpireBodySchema),
   async (
     req: express.Request,
     res: express.Response,
@@ -127,13 +245,9 @@ app.get(
     const { requestId, startTime } = res.locals;
 
     try {
-      let { order } = req.query;
+      const { order } = req.body;
 
       logger.info("Fill request started", { requestId, order });
-
-      if (!order) {
-        throw new Error("Missing order parameter");
-      }
 
       let address: PublicKey;
       try {
@@ -175,7 +289,6 @@ app.get(
         throw new Error("Order has expired");
       }
 
-      // This functions creates the ata if it doesn't exisit
       let ata_created = escrow_data.tokens.outputMint.equals(SOL_MINT)
         ? false
         : await create_token_ata(compressed_account, escrow_data, requestId);
@@ -209,7 +322,7 @@ app.get(
         outputMint.toString()
       );
 
-      const target_ratio = await caluclate_target_ratio(
+      const target_ratio = await calculate_target_ratio(
         escrow_data.amount.makingAmount.toNumber(),
         escrow_data.amount.takingAmount.toNumber(),
         inputMint.toString(),
@@ -217,9 +330,12 @@ app.get(
       );
 
       if (Number(target_ratio) > current_ratio) {
-        throw new Error(
-          `Target Ratio: ${target_ratio} is greater than current market ratio: ${current_ratio} `
-        );
+        logger.info("Price conditions not met", {
+          targetRatio: target_ratio,
+          currentRatio: current_ratio,
+          order: address.toString(),
+        });
+        throw new Error("Price conditions not met for this order");
       }
 
       const fill_data = await determineFillType(
@@ -237,7 +353,7 @@ app.get(
         swapAmount
       );
 
-      const slippage = best_slippage + 5;
+      const slippage = (best_slippage ?? 50) + 5;
 
       let swapResult = await get_swap_instruction(
         inputMint.toString(),
@@ -270,7 +386,6 @@ app.get(
           excludedDexLabels
         );
 
-        // Only use direct route result if it's valid and has fewer ALTs
         if (
           directRouteResult?.instruction_data &&
           directRouteResult.alt.length <= swapResult.alt.length
@@ -326,6 +441,7 @@ app.get(
       const responseTime = performance.now() - startTime;
 
       metrics.successfulFills++;
+      await updateOrderStatus(order as string, "filled", sig);
 
       logger.info("Fill transaction successful", {
         requestId,
@@ -342,8 +458,12 @@ app.get(
   }
 );
 
-app.get(
+// ── Expire endpoint (POST, authenticated) ───────────────
+v1.post(
   "/expired",
+  internalLimiter,
+  requireApiKey,
+  validateBody(fillExpireBodySchema),
   async (
     req: express.Request,
     res: express.Response,
@@ -351,13 +471,9 @@ app.get(
   ) => {
     const { requestId, startTime } = res.locals;
     try {
-      let { order } = req.query;
+      const { order } = req.body;
 
       logger.info("Expire request started", { requestId, order });
-
-      if (!order) {
-        throw new Error("Missing order parameter");
-      }
 
       let address: PublicKey;
       try {
@@ -387,7 +503,7 @@ app.get(
         expiredAt: new Date(
           escrow_data.expiredAt.toNumber() * 1000
         ).toISOString(),
-        isExpired: escrow_data.expiredAt.toNumber() <= Date.now(),
+        isExpired: escrow_data.expiredAt.toNumber() * 1000 <= Date.now(),
       });
 
       if (escrow_data.expiredAt.eq(new BN(0))) {
@@ -421,6 +537,7 @@ app.get(
       const responseTime = performance.now() - startTime;
 
       metrics.successfulExpires++;
+      await updateOrderStatus(order as string, "expired", signature);
 
       logger.info("Expire transaction successful", {
         requestId,
@@ -437,15 +554,90 @@ app.get(
   }
 );
 
+// ── Mount versioned API ─────────────────────────────────
+app.use("/v1", v1);
+
 app.use(errorHandler);
 
-const gracefulShutdown = (signal: string) => {
-  logger.info(`Received ${signal}, shutting down gracefully`);
-  process.exit(0);
-};
+// ── Startup health checks ───────────────────────────────
+async function verifyDependencies(): Promise<void> {
+  logger.info("Running startup health checks...");
 
-process.on("SIGTERM", gracefulShutdown);
-process.on("SIGINT", gracefulShutdown);
+  // Check RPC connection
+  try {
+    const slot = await Promise.race([
+      connection.getSlot(),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("RPC timeout")), 15000)
+      ),
+    ]);
+    logger.info("RPC connection OK", { slot });
+  } catch (error) {
+    logger.error("RPC connection FAILED — server cannot start", {
+      error: (error as Error).message,
+    });
+    throw new Error("RPC connection failed at startup");
+  }
+
+  // Check payer balance
+  try {
+    const balance = await connection.getBalance(payer.publicKey);
+    const solBalance = balance / 1e9;
+    if (solBalance < 0.01) {
+      logger.warn("Payer balance critically low", { solBalance });
+    } else {
+      logger.info("Payer balance OK", { solBalance });
+    }
+  } catch (error) {
+    logger.warn("Could not check payer balance", {
+      error: (error as Error).message,
+    });
+  }
+
+  // Check Jupiter API
+  try {
+    const res = await fetch(
+      "https://lite-api.jup.ag/swap/v1/program-id-to-label",
+      {
+        signal: AbortSignal.timeout(10000),
+      }
+    );
+    if (!res.ok) throw new Error(`Jupiter API returned ${res.status}`);
+    logger.info("Jupiter API connection OK");
+  } catch (error) {
+    logger.warn("Jupiter API health check failed — fills may not work", {
+      error: (error as Error).message,
+    });
+  }
+}
+
+// ── Graceful Shutdown ───────────────────────────────────
+let server: ReturnType<typeof app.listen>;
+let isShuttingDown = false;
+
+function gracefulShutdown(signal: string) {
+  if (isShuttingDown) return;
+  isShuttingDown = true;
+
+  logger.info(`Received ${signal}, shutting down gracefully...`);
+
+  // Stop accepting new connections
+  server?.close(() => {
+    logger.info("HTTP server closed");
+  });
+
+  // Stop the keeper loop
+  stopKeeper();
+
+  // Give in-flight requests time to complete
+  setTimeout(() => {
+    logger.info("Shutdown complete");
+    process.exit(0);
+  }, 10_000);
+}
+
+process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+process.on("SIGINT", () => gracefulShutdown("SIGINT"));
 
 // Log unhandled errors
 process.on("unhandledRejection", (reason, promise) => {
@@ -460,14 +652,31 @@ process.on("uncaughtException", (error) => {
   process.exit(1);
 });
 
-const server = app.listen(4000, "127.0.0.1", () => {
-  logger.info("Klira Trading Server started", {
-    port: 4000,
-    environment: process.env.NODE_ENV || "development",
-    nodeVersion: process.version,
-  });
-});
+// ── Start server ────────────────────────────────────────
+const PORT = Number(process.env.PORT) || 4000;
 
-server.on("error", (error) => {
-  logger.error("Server error", { error: error.message });
-});
+async function start() {
+  try {
+    await verifyDependencies();
+  } catch {
+    logger.error("Startup health checks failed — exiting");
+    process.exit(1);
+  }
+
+  server = app.listen(PORT, process.env.BIND_ADDRESS || "127.0.0.1", () => {
+    logger.info("Klira Trading Server started", {
+      port: PORT,
+      environment: process.env.NODE_ENV || "development",
+      nodeVersion: process.version,
+    });
+
+    // Start the keeper loop after server is ready
+    startKeeper();
+  });
+
+  server.on("error", (error) => {
+    logger.error("Server error", { error: error.message });
+  });
+}
+
+start();

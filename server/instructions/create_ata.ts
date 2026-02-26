@@ -1,5 +1,4 @@
 // Klira Server - Create ATA Handler
-// Klira Server - Create ATA Handler
 import { CompressedAccountWithMerkleContext } from "@lightprotocol/stateless.js";
 import {
   AddressLookupTableAccount,
@@ -9,12 +8,23 @@ import {
   VersionedTransaction,
 } from "@solana/web3.js";
 import { payer, program, rpc, SOL_MINT } from "../app";
+
+let _protocolConfig: PublicKey;
+function getProtocolConfig() {
+  if (!_protocolConfig) {
+    [_protocolConfig] = PublicKey.findProgramAddressSync(
+      [Buffer.from("protocol_config")],
+      program.programId
+    );
+  }
+  return _protocolConfig;
+}
 import {
   ADDRESS_QUEUE,
   ADDRESS_TREE,
   CLOSE_ACCOUNTS,
-} from "../../tests/utils/address";
-import { Escrow } from "../../tests/utils/fn";
+} from "../lib/accounts";
+import { Escrow } from "../lib/escrow";
 import { get_swap_instruction } from "../jup";
 import BN from "bn.js";
 import { getAssociatedTokenAddress, TOKEN_PROGRAM_ID } from "@solana/spl-token";
@@ -89,11 +99,8 @@ export async function create_ata(
       25
     );
 
-    if (
-      result.outAmount - amounts.rent > 0 &&
-      result.outAmount - amounts.rent < 1000
-    ) {
-      throw new Error("Tolarance too high");
+    if (result.outAmount - amounts.rent > 1000) {
+      throw new Error("Tolerance too high");
     }
 
     instruction_data = result.instruction_data;
@@ -156,7 +163,8 @@ export async function create_ata(
       outputMint: escrow_data.tokens.outputMint,
       inputTokenProgram: escrow_data.tokens.inputTokenProgram,
       outputTokenProgram: escrow_data.tokens.outputTokenProgram,
-    })
+      protocolConfig: getProtocolConfig(),
+    } as any)
     .remainingAccounts([...CLOSE_ACCOUNTS, ...accounts])
     .instruction();
 
@@ -302,7 +310,8 @@ export async function create_ata_wsol(
       outputMint: escrow_data.tokens.outputMint,
       inputTokenProgram: escrow_data.tokens.inputTokenProgram,
       outputTokenProgram: escrow_data.tokens.outputTokenProgram,
-    })
+      protocolConfig: getProtocolConfig(),
+    } as any)
     .remainingAccounts(CLOSE_ACCOUNTS)
     .instruction();
 

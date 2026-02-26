@@ -1,5 +1,3 @@
-use std::str::FromStr;
-
 use anchor_lang::prelude::*;
 use anchor_spl::{
     associated_token::AssociatedToken,
@@ -13,7 +11,7 @@ use light_sdk::{
 };
 
 use crate::error::CustomError;
-use crate::state::{AccountParams, EscrowAccount, Tokens};
+use crate::state::{AccountParams, EscrowAccount, ProtocolConfig, Tokens};
 use crate::utils::{expected_accounts, validate_light_accounts, LightAccountSet};
 use crate::{LIGHT_CPI_SIGNER, PROTOCOL_VAULT_SEED};
 
@@ -64,6 +62,9 @@ pub struct UpdateOrder<'info> {
     pub input_token_program: Interface<'info, TokenInterface>,
     pub output_token_program: Interface<'info, TokenInterface>,
 
+    #[account(seeds = [b"protocol_config"], bump)]
+    pub protocol_config: Account<'info, ProtocolConfig>,
+
     pub system_program: Program<'info, System>,
     pub associated_token_program: Program<'info, AssociatedToken>,
 }
@@ -84,6 +85,8 @@ pub fn update<'info>(
     ctx: Context<'_, '_, '_, 'info, UpdateOrder<'info>>,
     args: UpdateOrderArgs,
 ) -> Result<()> {
+    require!(!ctx.accounts.protocol_config.paused, CustomError::ProtocolPaused);
+
     require_keys_neq!(
         ctx.accounts.input_mint.key(),
         ctx.accounts.output_mint.key(),
@@ -205,8 +208,7 @@ fn light_cpi<'info>(
             escrow_account.unique_id.to_le_bytes().as_ref(),
             ctx.accounts.maker.key().as_ref(),
         ],
-        &Pubkey::from_str("amt1Ayt45jfbdw5YSo7iz6WZxUmnZsQTYXy82hVwyC2")
-            .map_err(|_| CustomError::InvalidMerkleTreePubkey)?,
+        &ctx.accounts.protocol_config.address_tree,
         &crate::ID,
     );
 

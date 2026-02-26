@@ -7,16 +7,31 @@ import {
   TransactionMessage,
   VersionedTransaction,
 } from "@solana/web3.js";
+
+let _protocolConfig: PublicKey;
+function getProtocolConfig() {
+  if (!_protocolConfig) {
+    [_protocolConfig] = PublicKey.findProgramAddressSync(
+      [Buffer.from("protocol_config")],
+      program.programId
+    );
+  }
+  return _protocolConfig;
+}
 import {
   ADDRESS_QUEUE,
   ADDRESS_TREE,
   CLOSE_ACCOUNTS,
-} from "../../tests/utils/address";
-import {
-  calculateTransactionSize,
-  parseEscrowFromBuffer,
-} from "../../tests/utils/fn";
+} from "../lib/accounts";
+import { parseEscrowFromBuffer } from "../lib/escrow";
 import { getComputeUnitsUsed, logger, retryOperation } from "../utils";
+
+function calculateTransactionSize(tx: VersionedTransaction): number {
+  const signatureLength = tx.signatures.length * 64;
+  const serializedMessage = tx.message.serialize();
+  const messageLength = serializedMessage.length;
+  return signatureLength + messageLength;
+}
 
 export async function fill(
   address: PublicKey,
@@ -87,7 +102,8 @@ export async function fill(
       outputMint: escrow_data.tokens.outputMint,
       inputTokenProgram: escrow_data.tokens.inputTokenProgram,
       outputTokenProgram: escrow_data.tokens.outputTokenProgram,
-    })
+      protocolConfig: getProtocolConfig(),
+    } as any)
     .remainingAccounts([...CLOSE_ACCOUNTS, ...accounts])
     .instruction();
 
@@ -133,7 +149,7 @@ export async function fill(
   const tx = new VersionedTransaction(message);
 
   const size = calculateTransactionSize(tx);
-  console.log(size, alt.length);
+  logger.debug(`Transaction size: ${size}, ALT count: ${alt.length}`);
 
   return tx;
 }
@@ -205,7 +221,8 @@ export async function fill_wsol(
       maker: escrow_data.maker,
       inputMint: escrow_data.tokens.inputMint,
       inputTokenProgram: escrow_data.tokens.inputTokenProgram,
-    })
+      protocolConfig: getProtocolConfig(),
+    } as any)
     .remainingAccounts([...CLOSE_ACCOUNTS, ...accounts])
     .instruction();
 
@@ -248,7 +265,7 @@ export async function fill_wsol(
 
   const tx = new VersionedTransaction(message);
   const size = calculateTransactionSize(tx);
-  console.log(size, alt.length);
+  logger.debug(`Transaction size: ${size}, ALT count: ${alt.length}`);
 
   return tx;
 }

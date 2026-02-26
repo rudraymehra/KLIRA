@@ -1,5 +1,4 @@
 // Klira Protocol - Utility Functions
-// Klira Protocol - Utility Functions
 use crate::{
     error::CustomError, instructions::JupiterRoutes, JUPITER_EVENT_AUTHORITY,
     JUPITER_V6_PROGRAM_ID, PROTOCOL_VAULT,
@@ -52,11 +51,17 @@ pub fn validate_jupiter_accounts(
 fn validate_exact_out_route(
     jup_accounts: &[AccountInfo],
     input_mint: Pubkey,
-    ouput_mint: Pubkey,
+    output_mint: Pubkey,
     input_token_program: Pubkey,
     output_token_program: Pubkey,
     fee_account: Option<Pubkey>,
 ) -> Result<()> {
+    // Bounds check: ExactOutRoute requires at least 11 accounts
+    require!(
+        jup_accounts.len() >= 11,
+        CustomError::InvalidNumberOfAccounts
+    );
+
     require!(
         jup_accounts[0].key() == spl_token::ID || jup_accounts[0].key() == spl_token_2022::ID,
         CustomError::InvalidTokenProgramId
@@ -84,7 +89,7 @@ fn validate_exact_out_route(
 
     let destination_token_account = get_associated_token_address_with_program_id(
         &PROTOCOL_VAULT,
-        &ouput_mint,
+        &output_mint,
         &output_token_program,
     );
 
@@ -96,7 +101,7 @@ fn validate_exact_out_route(
 
     require!(jup_accounts[3].is_writable, CustomError::NotWritable);
 
-    // 4 destination_token_account
+    // [4] destination_mint — validated internally by Jupiter's routing logic
 
     require_keys_eq!(
         jup_accounts[5].key(),
@@ -106,7 +111,7 @@ fn validate_exact_out_route(
 
     require_keys_eq!(
         jup_accounts[6].key(),
-        ouput_mint,
+        output_mint,
         CustomError::InvalidOutputMint
     );
 
@@ -162,11 +167,17 @@ fn validate_exact_out_route(
 fn validate_route(
     jup_accounts: &[AccountInfo],
     input_mint: Pubkey,
-    ouput_mint: Pubkey,
+    output_mint: Pubkey,
     input_token_program: Pubkey,
     output_token_program: Pubkey,
     fee_account: Option<Pubkey>,
 ) -> Result<()> {
+    // Bounds check: Route requires at least 9 accounts
+    require!(
+        jup_accounts.len() >= 9,
+        CustomError::InvalidNumberOfAccounts
+    );
+
     require!(
         jup_accounts[0].key() == spl_token::ID || jup_accounts[0].key() == spl_token_2022::ID,
         CustomError::InvalidTokenProgramId
@@ -194,7 +205,7 @@ fn validate_route(
 
     let destination_token_account = get_associated_token_address_with_program_id(
         &PROTOCOL_VAULT,
-        &ouput_mint,
+        &output_mint,
         &output_token_program,
     );
 
@@ -206,11 +217,16 @@ fn validate_route(
 
     require!(jup_accounts[3].is_writable, CustomError::NotWritable);
 
-    // 4 destination_token_account -> Jupiter program
+    // Validate input_mint at position [4] (was previously skipped)
+    require_keys_eq!(
+        jup_accounts[4].key(),
+        input_mint,
+        CustomError::InvalidInputMint
+    );
 
     require_keys_eq!(
         jup_accounts[5].key(),
-        ouput_mint,
+        output_mint,
         CustomError::InvalidOutputMint
     );
 
@@ -252,11 +268,17 @@ fn validate_route(
 fn validate_shared_accounts_route(
     jup_accounts: &[AccountInfo],
     input_mint: Pubkey,
-    ouput_mint: Pubkey,
+    output_mint: Pubkey,
     input_token_program: Pubkey,
     output_token_program: Pubkey,
     fee_account: Option<Pubkey>,
 ) -> Result<()> {
+    // Bounds check: SharedAccountsRoute requires at least 13 accounts
+    require!(
+        jup_accounts.len() >= 13,
+        CustomError::InvalidNumberOfAccounts
+    );
+
     require!(
         jup_accounts[0].key() == spl_token::ID || jup_accounts[0].key() == spl_token_2022::ID,
         CustomError::InvalidTokenProgramId
@@ -301,7 +323,7 @@ fn validate_shared_accounts_route(
 
     let program_destination_token_account = get_associated_token_address_with_program_id(
         &program_authority,
-        &ouput_mint,
+        &output_mint,
         &output_token_program,
     );
 
@@ -315,7 +337,7 @@ fn validate_shared_accounts_route(
 
     let destination_token_account = get_associated_token_address_with_program_id(
         &PROTOCOL_VAULT,
-        &ouput_mint,
+        &output_mint,
         &output_token_program,
     );
 
@@ -335,7 +357,7 @@ fn validate_shared_accounts_route(
 
     require_keys_eq!(
         jup_accounts[8].key(),
-        ouput_mint,
+        output_mint,
         CustomError::InvalidOutputMint
     );
 
@@ -402,7 +424,7 @@ pub const LIGHT_SYSTEM_PROGRAM: Pubkey = pubkey!("SySTEM1eSU2p4BGQfQpimFEWWSC1XD
 pub const CPI_AUTHORITY: Pubkey = pubkey!("3odTzpE7FpCgYvFkQDWuNSyEhCeLkgpvMCB8Q3Nrj9T1");
 
 pub enum LightAccountSet {
-    Init,
+    Init(Pubkey),
     Update,
     Close,
 }
@@ -423,8 +445,8 @@ fn base_accounts() -> Vec<AccountMeta> {
 pub fn expected_accounts(set: LightAccountSet) -> Vec<AccountMeta> {
     let mut accounts = base_accounts();
     match set {
-        LightAccountSet::Init => {
-            accounts.push(AccountMeta::new(ADDRESS_TREE, false));
+        LightAccountSet::Init(address_tree) => {
+            accounts.push(AccountMeta::new(address_tree, false));
             accounts.push(AccountMeta::new(STATE_TREE, false));
             accounts.push(AccountMeta::new(ADDRESS_QUEUE, false));
         }

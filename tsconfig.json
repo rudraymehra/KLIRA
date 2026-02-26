@@ -10,5 +10,5 @@
     "esModuleInterop": true,
     "resolveJsonModule": true
   },
-  "exclude": ["tests", "programs", "migrations", "node_modules"]
+  "exclude": ["tests", "programs", "migrations", "node_modules", "frontend", "server/__tests__"]
 }

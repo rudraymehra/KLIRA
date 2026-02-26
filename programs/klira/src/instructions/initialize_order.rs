@@ -13,7 +13,7 @@ use light_sdk::{
 
 use crate::{
     error::CustomError,
-    state::EscrowAccount,
+    state::{EscrowAccount, ProtocolConfig},
     utils::{expected_accounts, validate_light_accounts, LightAccountSet},
 };
 
@@ -72,6 +72,9 @@ pub struct InitializeOrder<'info> {
     pub input_token_program: Interface<'info, TokenInterface>,
     pub output_token_program: Interface<'info, TokenInterface>,
 
+    #[account(seeds = [b"protocol_config"], bump)]
+    pub protocol_config: Account<'info, ProtocolConfig>,
+
     pub system_program: Program<'info, System>,
     pub associated_token_program: Program<'info, AssociatedToken>,
 }
@@ -96,6 +99,8 @@ pub fn init<'info>(
     order_args: InitializeOrderParams,
     light_args: LightArgs,
 ) -> Result<()> {
+    require!(!ctx.accounts.protocol_config.paused, CustomError::ProtocolPaused);
+
     require!(order_args.making_amount > 0, CustomError::InvalidAmount);
     require!(order_args.taking_amount > 0, CustomError::InvalidAmount);
 
@@ -143,7 +148,7 @@ pub fn init<'info>(
 
     validate_light_accounts(
         ctx.remaining_accounts,
-        &expected_accounts(LightAccountSet::Init),
+        &expected_accounts(LightAccountSet::Init(ctx.accounts.protocol_config.address_tree)),
     )?;
 
     let light_cpi_accounts = CpiAccounts::new(
@@ -185,7 +190,7 @@ pub fn init<'info>(
     escrow.amount.ori_taking_amount = order_args.taking_amount;
     escrow.amount.making_amount = order_args.making_amount;
     escrow.amount.taking_amount = order_args.taking_amount;
-    escrow.fee_bps = 10; // NOTE: for now fee is hardcoded to 0.1% in future we can make it dynamic
+    escrow.fee_bps = ctx.accounts.protocol_config.fee_bps;
     escrow.expired_at = order_args.expired_at.unwrap_or(0);
     escrow.created_at = Clock::get()?.unix_timestamp;
     escrow.updated_at = Clock::get()?.unix_timestamp;

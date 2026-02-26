@@ -1,8 +1,4 @@
 // Klira Protocol - Fill Order Instruction
-// Klira Protocol - Fill Order Instruction
-// Klira Protocol - Fill Order Instruction
-use std::str::FromStr;
-
 use anchor_lang::prelude::*;
 use anchor_spl::{
     associated_token::AssociatedToken,
@@ -17,12 +13,12 @@ use light_sdk::{
 use crate::{
     error::CustomError,
     parse_jupiter_route_data,
-    state::{AccountParams, EscrowAccount, Tokens},
+    state::{AccountParams, EscrowAccount, ProtocolConfig, Tokens},
     swap_cpi,
     utils::{
         expected_accounts, validate_jupiter_accounts, validate_light_accounts, LightAccountSet,
     },
-    FEE_ACCOUNT, PROTOCOL_VAULT_SEED, SOL_MINT,
+    FEE_DENOMINATOR, PROTOCOL_VAULT_SEED, SOL_MINT,
 };
 
 use jupiter::{program::Jupiter, types::RoutePlanStep};
@@ -68,6 +64,9 @@ pub struct FillOrder<'info> {
     pub input_token_program: Interface<'info, TokenInterface>,
     pub output_token_program: Interface<'info, TokenInterface>,
 
+    #[account(seeds = [b"protocol_config"], bump)]
+    pub protocol_config: Account<'info, ProtocolConfig>,
+
     pub system_program: Program<'info, System>,
     pub associated_token_program: Program<'info, AssociatedToken>,
     pub jupiter_program: Program<'info, Jupiter>,
@@ -93,9 +92,24 @@ pub fn fill<'info>(
     ctx: Context<'_, '_, '_, 'info, FillOrder<'info>>,
     args: FillOrderParams,
 ) -> Result<()> {
+    require!(!ctx.accounts.protocol_config.paused, CustomError::ProtocolPaused);
+
     if ctx.accounts.output_mint.key() == SOL_MINT {
         msg!("Call the fill_wsol_order instruction");
         return Err(ProgramError::InvalidInstructionData.into());
+    }
+
+    // Validate maker before any transfers
+    let escrow_account = args.escrow_account;
+    require!(escrow_account.maker == ctx.accounts.maker.key(), CustomError::InvalidEscrowMaker);
+
+    // Check expiration - expired orders cannot be filled
+    if escrow_account.expired_at > 0 {
+        let current_timestamp = Clock::get()?.unix_timestamp;
+        require!(
+            current_timestamp <= escrow_account.expired_at,
+            CustomError::OrderExpired
+        );
     }
 
     let remaining = &ctx.remaining_accounts;
@@ -111,16 +125,12 @@ pub fn fill<'info>(
     let jup_data = parse_jupiter_route_data(&args.swap_data)?;
 
     let in_amount = jup_data.in_amount;
-    // let out_amount = jup_data.out_amount;
-    // NOTE: the amount we get here already deducts the fee
-    // so if the taking amount is 100 USDC and fee is 0.1% so here we get 99.9 USDC
 
-    if jup_data.slippage_bps > 50 {
+    if jup_data.slippage_bps > ctx.accounts.protocol_config.max_slippage_bps {
         return Err(error!(CustomError::SlippageTooHigh));
     }
 
-    // hard coded 0.1%
-    if jup_data.platform_fee_bps != 10 {
+    if jup_data.platform_fee_bps as u16 != ctx.accounts.protocol_config.fee_bps {
         return Err(error!(CustomError::InvalidPlatformFeeBps));
     }
 
@@ -137,7 +147,7 @@ pub fn fill<'info>(
         ctx.accounts.output_mint.key(),
         ctx.accounts.input_token_program.key(),
         ctx.accounts.output_token_program.key(),
-        Some(FEE_ACCOUNT), // NOTE: hard coded for now
+        Some(ctx.accounts.protocol_config.fee_account),
     )?;
 
     let balance_before_swap = ctx.accounts.protocol_vault_output_mint_ata.amount;
@@ -147,6 +157,7 @@ pub fn fill<'info>(
         jupiter_accounts,
         &ctx.accounts.protocol_vault.to_account_info(),
         &ctx.accounts.jupiter_program,
+        ctx.bumps.protocol_vault,
     )?;
 
     ctx.accounts.protocol_vault_output_mint_ata.reload()?;
@@ -161,7 +172,7 @@ pub fn fill<'info>(
 
     transfer_tokens(&ctx, diff)?;
 
-    let escrow_account = args.escrow_account;
+    let fee_bps = ctx.accounts.protocol_config.fee_bps as u64;
 
     match args.fill_type {
         FillType::Full => {
@@ -169,21 +180,12 @@ pub fn fill<'info>(
                 return Err(error!(CustomError::InvalidInAmount));
             }
 
-            // let expected_after_fee = escrow_account
-            //     .amount
-            //     .taking_amount
-            //     .checked_mul((10_000u64 - escrow_account.fee_bps as u64))
-            //     .ok_or(ProgramError::ArithmeticOverflow)?
-            //     .checked_div(10_000)
-            //     .ok_or(ProgramError::ArithmeticOverflow)?;
-
-            // NOTE: hard coded 0.1% fee for now
             let expected_after_fee = escrow_account
                 .amount
                 .taking_amount
-                .checked_mul(999)
+                .checked_mul(FEE_DENOMINATOR.checked_sub(fee_bps).ok_or(ProgramError::ArithmeticOverflow)?)
                 .ok_or(ProgramError::ArithmeticOverflow)?
-                .checked_div(1000)
+                .checked_div(FEE_DENOMINATOR)
                 .ok_or(ProgramError::ArithmeticOverflow)?;
 
             if expected_after_fee > diff {
@@ -209,6 +211,13 @@ pub fn fill<'info>(
                 return Err(ProgramError::InsufficientFunds.into());
             }
 
+            // Enforce minimum partial fill of 10% of making_amount
+            let min_fill = escrow_account.amount.making_amount / 10;
+            if min_fill > 0 {
+                require!(in_amount >= min_fill, CustomError::FillTooSmall);
+            }
+
+            // Calculate pro-rata taking_amount
             let taking_amount = escrow_account
                 .amount
                 .taking_amount
@@ -217,17 +226,21 @@ pub fn fill<'info>(
                 .checked_div(escrow_account.amount.making_amount)
                 .ok_or(ProgramError::ArithmeticOverflow)?;
 
+            // Ensure pro-rata taking_amount is non-zero to prevent free token extraction
+            require!(taking_amount > 0, CustomError::InvalidAmount);
+
             let expected_after_fee = taking_amount
-                .checked_mul(999)
+                .checked_mul(FEE_DENOMINATOR.checked_sub(fee_bps).ok_or(ProgramError::ArithmeticOverflow)?)
                 .ok_or(ProgramError::ArithmeticOverflow)?
-                .checked_div(1000)
+                .checked_div(FEE_DENOMINATOR)
                 .ok_or(ProgramError::ArithmeticOverflow)?;
 
             if expected_after_fee > diff {
                 return Err(error!(CustomError::LowTakingAmount));
             }
 
-            let escrow_address = light_cpi_update(&ctx, light_accounts, &args, in_amount, diff)?;
+            // Pass pro-rata taking_amount (not diff) to preserve correct escrow price ratio
+            let escrow_address = light_cpi_update(&ctx, light_accounts, &args, in_amount, taking_amount)?;
 
             emit!(FillEvent {
                 escrow_address,
@@ -289,8 +302,7 @@ fn light_cpi_close<'info>(
             escrow_account.unique_id.to_le_bytes().as_ref(),
             ctx.accounts.maker.key().as_ref(),
         ],
-        &Pubkey::from_str("amt1Ayt45jfbdw5YSo7iz6WZxUmnZsQTYXy82hVwyC2")
-            .map_err(|_| CustomError::InvalidMerkleTreePubkey)?,
+        &ctx.accounts.protocol_config.address_tree,
         &crate::ID,
     );
 
@@ -367,8 +379,7 @@ pub fn light_cpi_update<'info>(
             escrow_account.unique_id.to_le_bytes().as_ref(),
             ctx.accounts.maker.key().as_ref(),
         ],
-        &Pubkey::from_str("amt1Ayt45jfbdw5YSo7iz6WZxUmnZsQTYXy82hVwyC2")
-            .map_err(|_| CustomError::InvalidMerkleTreePubkey)?,
+        &ctx.accounts.protocol_config.address_tree,
         &crate::ID,
     );
 

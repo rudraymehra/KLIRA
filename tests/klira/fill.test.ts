@@ -57,9 +57,9 @@ describe("klira/fill_order", () => {
   );
 
   const url =
-    "https://devnet.helius-rpc.com/?api-key=c991f045-ba1f-4d71-b872-0ef87e7f039d";
+    process.env.TEST_DEVNET_RPC_URL || "https://devnet.helius-rpc.com/?api-key=YOUR_API_KEY";
 
-  const indexer = "http://***REMOVED***:8784";
+  const indexer = process.env.TEST_INDEXER_URL || "http://localhost:8784";
 
   const rpc = createRpc(url, url, url);
 

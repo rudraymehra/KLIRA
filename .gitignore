@@ -7,5 +7,27 @@ test-ledger
 .yarn
 dist/
 .env
+.env.*
+.env.local
+data/
 logs/
 tokens.json
+
+# IDE
+.vscode/
+.idea/
+
+# Private keys and certificates
+*.pem
+*.key
+*.p12
+id.json
+payer.json
+RESUME_CONTEXT.md
+*.bfg-report
+
+# Coverage
+coverage/
+
+# OS files
+Thumbs.db

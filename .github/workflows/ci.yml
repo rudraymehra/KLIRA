@@ -21,9 +21,6 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
 
-      - name: Upgrade npm
-        run: npm install -g npm@latest
-
       - name: Install root dependencies
         run: npm ci
 
@@ -38,7 +35,7 @@ jobs:
 
       - name: Install frontend dependencies
         working-directory: frontend
-        run: npm ci
+        run: npm install --prefer-offline
 
       - name: Lint frontend
         working-directory: frontend
@@ -54,9 +51,6 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
-
-      - name: Upgrade npm
-        run: npm install -g npm@latest
 
       - name: Install dependencies
         run: npm ci
@@ -86,12 +80,9 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
-      - name: Upgrade npm
-        run: npm install -g npm@latest
-
       - name: Install dependencies
         working-directory: frontend
-        run: npm ci
+        run: npm install --prefer-offline
 
       - name: Run tests
         working-directory: frontend
@@ -115,9 +106,6 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
 
-      - name: Upgrade npm
-        run: npm install -g npm@latest
-
       - name: Install dependencies
         run: npm ci
 
@@ -135,9 +123,6 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
 
-      - name: Upgrade npm
-        run: npm install -g npm@latest
-
       - name: Install root dependencies
         run: npm ci
 
@@ -150,7 +135,7 @@ jobs:
 
       - name: Install frontend dependencies
         working-directory: frontend
-        run: npm ci
+        run: npm install --prefer-offline
 
       - name: Audit frontend dependencies (critical)
         working-directory: frontend
@@ -183,12 +168,9 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
-      - name: Upgrade npm
-        run: npm install -g npm@latest
-
       - name: Install dependencies
         working-directory: frontend
-        run: npm ci
+        run: npm install --prefer-offline
 
       - name: Build
         working-directory: frontend

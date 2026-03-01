@@ -192,19 +192,24 @@ v1.get(
   publicLimiter,
   validateQuery(orderQuerySchema),
   async (req, res) => {
-    const { wallet } = req.query;
-    const limit = Math.min(Math.max(parseInt(req.query.limit as string) || 100, 1), 1000);
-    const offset = Math.max(parseInt(req.query.offset as string) || 0, 0);
+    try {
+      const { wallet } = req.query;
+      const limit = Math.min(Math.max(parseInt(req.query.limit as string) || 100, 1), 1000);
+      const offset = Math.max(parseInt(req.query.offset as string) || 0, 0);
 
-    if (wallet) {
-      const orders = await getOrdersByWallet(wallet as string);
-      res.json({ orders: orders.slice(offset, offset + limit), total: orders.length, limit, offset });
-    } else {
-      const [orders, total] = await Promise.all([
-        getAllOrders(limit, offset),
-        getOrderCount(),
-      ]);
-      res.json({ orders, total, limit, offset });
+      if (wallet) {
+        const orders = await getOrdersByWallet(wallet as string);
+        res.json({ orders: orders.slice(offset, offset + limit), total: orders.length, limit, offset });
+      } else {
+        const [orders, total] = await Promise.all([
+          getAllOrders(limit, offset),
+          getOrderCount(),
+        ]);
+        res.json({ orders, total, limit, offset });
+      }
+    } catch (error) {
+      logger.error("Failed to fetch orders", { error: (error as Error).message });
+      res.status(500).json({ error: "Failed to fetch orders", detail: (error as Error).message });
     }
   }
 );

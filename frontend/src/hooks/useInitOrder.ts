@@ -6,8 +6,17 @@ import {
   ComputeBudgetProgram,
   TransactionMessage,
   VersionedTransaction,
+  SystemProgram,
+  LAMPORTS_PER_SOL,
 } from "@solana/web3.js";
-import { TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID } from "@solana/spl-token";
+import {
+  TOKEN_PROGRAM_ID,
+  TOKEN_2022_PROGRAM_ID,
+  NATIVE_MINT,
+  getAssociatedTokenAddressSync,
+  createAssociatedTokenAccountInstruction,
+  createSyncNativeInstruction,
+} from "@solana/spl-token";
 import { bn } from "@lightprotocol/stateless.js";
 import BN from "bn.js";
 import { useKliraProgram } from "./useKliraProgram";
@@ -109,14 +118,44 @@ export function useInitOrder() {
           .remainingAccounts(INIT_REMAINING_ACCOUNTS)
           .instruction();
 
+        // Build pre-instructions for WSOL wrapping if input is native SOL
+        const preInstructions: any[] = [];
+        const isInputSOL = input.inputMint.equals(NATIVE_MINT);
+        let wsolAta: PublicKey | null = null;
+
+        if (isInputSOL) {
+          wsolAta = getAssociatedTokenAddressSync(NATIVE_MINT, maker);
+          const ataInfo = await rpc.getAccountInfo(wsolAta);
+
+          if (!ataInfo) {
+            // Create WSOL ATA if it doesn't exist
+            preInstructions.push(
+              createAssociatedTokenAccountInstruction(maker, wsolAta, maker, NATIVE_MINT)
+            );
+          }
+
+          // Transfer SOL to WSOL ATA (making_amount is in lamports for SOL)
+          preInstructions.push(
+            SystemProgram.transfer({
+              fromPubkey: maker,
+              toPubkey: wsolAta,
+              lamports: BigInt(input.makingAmount.toString()),
+            })
+          );
+
+          // Sync native balance so the token account reflects the SOL deposit
+          preInstructions.push(createSyncNativeInstruction(wsolAta));
+        }
+
         // Build versioned transaction
         const latestBlockhash = await rpc.getLatestBlockhash();
         const message = new TransactionMessage({
           payerKey: maker,
           recentBlockhash: latestBlockhash.blockhash,
           instructions: [
-            ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
+            ComputeBudgetProgram.setComputeUnitLimit({ units: 500_000 }),
             ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 10_000 }),
+            ...preInstructions,
             instruction,
           ],
         }).compileToV0Message();
@@ -124,8 +163,10 @@ export function useInitOrder() {
         const tx = new VersionedTransaction(message);
 
         // Simulate transaction before requesting wallet signature
-        const simulation = await rpc.simulateTransaction(tx);
+        const simulation = await rpc.simulateTransaction(tx, { sigVerify: false });
         if (simulation.value.err) {
+          const logs = simulation.value.logs?.join("\n") || "";
+          console.error("Simulation failed:", simulation.value.err, "\nLogs:", logs);
           setError(`Simulation failed: ${JSON.stringify(simulation.value.err)}`);
           setLoading(false);
           return null;

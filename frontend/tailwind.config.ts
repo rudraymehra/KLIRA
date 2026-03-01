@@ -53,8 +53,12 @@ const config: Config = {
           "100%": { transform: "translateY(100vh)" },
         },
         borderGlow: {
-          "0%": { boxShadow: "0 0 5px #00f0ff, 0 0 20px rgba(0, 240, 255, 0.2)" },
-          "100%": { boxShadow: "0 0 10px #00f0ff, 0 0 40px rgba(0, 240, 255, 0.4)" },
+          "0%": {
+            boxShadow: "0 0 5px #00f0ff, 0 0 20px rgba(0, 240, 255, 0.2)",
+          },
+          "100%": {
+            boxShadow: "0 0 10px #00f0ff, 0 0 40px rgba(0, 240, 255, 0.4)",
+          },
         },
       },
       backgroundImage: {

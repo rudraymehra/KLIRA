@@ -75,7 +75,9 @@ if (!process.env.RPC_URL) {
 }
 
 if (!process.env.KEEPER_API_KEY) {
-  logger.warn("KEEPER_API_KEY not set — fill/expire endpoints will reject all requests");
+  logger.warn(
+    "KEEPER_API_KEY not set — fill/expire endpoints will reject all requests"
+  );
 }
 
 const url = process.env.RPC_URL;
@@ -104,7 +106,7 @@ export const SOL_MINT = new PublicKey(
 );
 
 const app = express();
-app.set('trust proxy', 1);
+app.set("trust proxy", 1);
 
 // ── Security headers ────────────────────────────────────
 app.use(helmet());
@@ -195,12 +197,20 @@ v1.get(
     try {
       const query = res.locals.validatedQuery || req.query;
       const { wallet } = query;
-      const limit = Math.min(Math.max(parseInt(query.limit as string) || 100, 1), 1000);
+      const limit = Math.min(
+        Math.max(parseInt(query.limit as string) || 100, 1),
+        1000
+      );
       const offset = Math.max(parseInt(query.offset as string) || 0, 0);
 
       if (wallet) {
         const orders = await getOrdersByWallet(wallet as string);
-        res.json({ orders: orders.slice(offset, offset + limit), total: orders.length, limit, offset });
+        res.json({
+          orders: orders.slice(offset, offset + limit),
+          total: orders.length,
+          limit,
+          offset,
+        });
       } else {
         const [orders, total] = await Promise.all([
           getAllOrders(limit, offset),
@@ -209,8 +219,13 @@ v1.get(
         res.json({ orders, total, limit, offset });
       }
     } catch (error) {
-      logger.error("Failed to fetch orders", { error: (error as Error).message });
-      res.status(500).json({ error: "Failed to fetch orders", detail: (error as Error).message });
+      logger.error("Failed to fetch orders", {
+        error: (error as Error).message,
+      });
+      res.status(500).json({
+        error: "Failed to fetch orders",
+        detail: (error as Error).message,
+      });
     }
   }
 );
@@ -466,13 +481,19 @@ v1.post(
       const confirmConnection = new Connection(process.env.RPC_URL!);
       try {
         const latestBlockhash = await confirmConnection.getLatestBlockhash();
-        await confirmConnection.confirmTransaction({
-          signature: sig,
-          blockhash: latestBlockhash.blockhash,
-          lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
-        }, "confirmed");
+        await confirmConnection.confirmTransaction(
+          {
+            signature: sig,
+            blockhash: latestBlockhash.blockhash,
+            lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
+          },
+          "confirmed"
+        );
       } catch (confirmErr) {
-        logger.error("Transaction failed to confirm", { signature: sig, error: (confirmErr as Error).message });
+        logger.error("Transaction failed to confirm", {
+          signature: sig,
+          error: (confirmErr as Error).message,
+        });
         throw new Error(`Transaction sent but not confirmed: ${sig}`);
       }
 
@@ -584,13 +605,19 @@ v1.post(
       const confirmConnection = new Connection(process.env.RPC_URL!);
       try {
         const latestBlockhash = await confirmConnection.getLatestBlockhash();
-        await confirmConnection.confirmTransaction({
-          signature,
-          blockhash: latestBlockhash.blockhash,
-          lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
-        }, "confirmed");
+        await confirmConnection.confirmTransaction(
+          {
+            signature,
+            blockhash: latestBlockhash.blockhash,
+            lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
+          },
+          "confirmed"
+        );
       } catch (confirmErr) {
-        logger.error("Transaction failed to confirm", { signature, error: (confirmErr as Error).message });
+        logger.error("Transaction failed to confirm", {
+          signature,
+          error: (confirmErr as Error).message,
+        });
         throw new Error(`Transaction sent but not confirmed: ${signature}`);
       }
 

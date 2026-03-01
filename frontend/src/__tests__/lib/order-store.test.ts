@@ -97,7 +97,10 @@ describe("order-store", () => {
       });
       saveOrder(order1);
       saveOrder(order2);
-      updateOrderStatus("addr1111111111111111111111111111111111111111", "filled");
+      updateOrderStatus(
+        "addr1111111111111111111111111111111111111111",
+        "filled"
+      );
       const stored = getStoredOrders();
       const updated1 = stored.find((o) => o.id === "kl_1");
       const updated2 = stored.find((o) => o.id === "kl_2");

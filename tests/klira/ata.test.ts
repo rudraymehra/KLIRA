@@ -60,7 +60,8 @@ describe("klira/create_token_account", () => {
   );
 
   const url =
-    process.env.TEST_DEVNET_RPC_URL || "https://devnet.helius-rpc.com/?api-key=YOUR_API_KEY";
+    process.env.TEST_DEVNET_RPC_URL ||
+    "https://devnet.helius-rpc.com/?api-key=YOUR_API_KEY";
 
   const indexer = process.env.TEST_INDEXER_URL || "http://localhost:8784";
 

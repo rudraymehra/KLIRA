@@ -100,13 +100,19 @@ async function processExpiredOrder(order: TrackedOrder): Promise<boolean> {
     const confirmConnection = new Connection(process.env.RPC_URL!);
     try {
       const latestBlockhash = await confirmConnection.getLatestBlockhash();
-      await confirmConnection.confirmTransaction({
-        signature,
-        blockhash: latestBlockhash.blockhash,
-        lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
-      }, "confirmed");
+      await confirmConnection.confirmTransaction(
+        {
+          signature,
+          blockhash: latestBlockhash.blockhash,
+          lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
+        },
+        "confirmed"
+      );
     } catch (confirmErr) {
-      logger.error("Transaction failed to confirm", { signature, error: (confirmErr as Error).message });
+      logger.error("Transaction failed to confirm", {
+        signature,
+        error: (confirmErr as Error).message,
+      });
       throw new Error(`Transaction sent but not confirmed: ${signature}`);
     }
 
@@ -286,13 +292,19 @@ async function processFillableOrder(order: TrackedOrder): Promise<boolean> {
     const confirmConnection = new Connection(process.env.RPC_URL!);
     try {
       const latestBlockhash = await confirmConnection.getLatestBlockhash();
-      await confirmConnection.confirmTransaction({
-        signature: sig,
-        blockhash: latestBlockhash.blockhash,
-        lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
-      }, "confirmed");
+      await confirmConnection.confirmTransaction(
+        {
+          signature: sig,
+          blockhash: latestBlockhash.blockhash,
+          lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
+        },
+        "confirmed"
+      );
     } catch (confirmErr) {
-      logger.error("Transaction failed to confirm", { signature: sig, error: (confirmErr as Error).message });
+      logger.error("Transaction failed to confirm", {
+        signature: sig,
+        error: (confirmErr as Error).message,
+      });
       throw new Error(`Transaction sent but not confirmed: ${sig}`);
     }
 
@@ -351,7 +363,9 @@ async function keeperLoop() {
       }
 
       if (!acquireOrderLock(order.escrowAddress)) {
-        logger.debug("Order locked, skipping", { escrowAddress: order.escrowAddress });
+        logger.debug("Order locked, skipping", {
+          escrowAddress: order.escrowAddress,
+        });
         continue;
       }
 

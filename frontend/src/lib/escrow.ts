@@ -51,10 +51,7 @@ export function parseEscrowFromBuffer(buffer: Buffer): Escrow {
   };
 }
 
-export function deriveEscrowAddress(
-  uniqueId: BN,
-  maker: PublicKey
-): PublicKey {
+export function deriveEscrowAddress(uniqueId: BN, maker: PublicKey): PublicKey {
   const seeds: Uint8Array[] = [
     Buffer.from("escrow"),
     uniqueId.toArrayLike(Buffer, "le", 8),

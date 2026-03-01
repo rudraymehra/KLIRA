@@ -18,11 +18,7 @@ function getProtocolConfig() {
   }
   return _protocolConfig;
 }
-import {
-  ADDRESS_QUEUE,
-  ADDRESS_TREE,
-  CLOSE_ACCOUNTS,
-} from "../lib/accounts";
+import { ADDRESS_QUEUE, ADDRESS_TREE, CLOSE_ACCOUNTS } from "../lib/accounts";
 import { parseEscrowFromBuffer } from "../lib/escrow";
 import { getComputeUnitsUsed, logger, retryOperation } from "../utils";
 

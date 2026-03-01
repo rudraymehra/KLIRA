@@ -20,7 +20,11 @@ import { bn } from "@lightprotocol/stateless.js";
 import BN from "bn.js";
 import { useKliraProgram } from "./useKliraProgram";
 import { deriveEscrowAddress } from "@/lib/escrow";
-import { ADDRESS_TREE, ADDRESS_QUEUE, INIT_REMAINING_ACCOUNTS } from "@/lib/program";
+import {
+  ADDRESS_TREE,
+  ADDRESS_QUEUE,
+  INIT_REMAINING_ACCOUNTS,
+} from "@/lib/program";
 import { saveOrder, type StoredOrder } from "@/lib/order-store";
 
 interface InitOrderInput {
@@ -57,7 +61,9 @@ export function useInitOrder() {
         // Check wallet balance first
         const balance = await connection.getBalance(maker);
         if (balance === 0) {
-          setError("Your wallet has 0 SOL on devnet. Get free SOL at faucet.solana.com");
+          setError(
+            "Your wallet has 0 SOL on devnet. Get free SOL at faucet.solana.com"
+          );
           setLoading(false);
           return null;
         }
@@ -67,10 +73,14 @@ export function useInitOrder() {
           rpc.getAccountInfo(input.inputMint),
           rpc.getAccountInfo(input.outputMint),
         ]);
-        const inputTokenProgram = inputMintInfo?.owner.equals(TOKEN_2022_PROGRAM_ID)
+        const inputTokenProgram = inputMintInfo?.owner.equals(
+          TOKEN_2022_PROGRAM_ID
+        )
           ? TOKEN_2022_PROGRAM_ID
           : TOKEN_PROGRAM_ID;
-        const outputTokenProgram = outputMintInfo?.owner.equals(TOKEN_2022_PROGRAM_ID)
+        const outputTokenProgram = outputMintInfo?.owner.equals(
+          TOKEN_2022_PROGRAM_ID
+        )
           ? TOKEN_2022_PROGRAM_ID
           : TOKEN_PROGRAM_ID;
 
@@ -137,7 +147,12 @@ export function useInitOrder() {
           if (!ataInfo) {
             // Create WSOL ATA if it doesn't exist
             preInstructions.push(
-              createAssociatedTokenAccountInstruction(maker, wsolAta, maker, NATIVE_MINT)
+              createAssociatedTokenAccountInstruction(
+                maker,
+                wsolAta,
+                maker,
+                NATIVE_MINT
+              )
             );
           }
 
@@ -175,7 +190,11 @@ export function useInitOrder() {
           replaceRecentBlockhash: true,
         });
         if (simulation.value.err) {
-          console.error("Simulation failed:", simulation.value.err, simulation.value.logs);
+          console.error(
+            "Simulation failed:",
+            simulation.value.err,
+            simulation.value.logs
+          );
           setError(`Transaction simulation failed. Please try again.`);
           setLoading(false);
           return null;
@@ -212,7 +231,8 @@ export function useInitOrder() {
 
         // Register order with the keeper server
         try {
-          const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+          const apiUrl =
+            process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
           await fetch(`${apiUrl}/v1/orders`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -226,7 +246,9 @@ export function useInitOrder() {
               outputSymbol: input.outputSymbol,
               makingAmount: input.makingAmount.toString(),
               takingAmount: input.takingAmount.toString(),
-              expiredAt: input.expiredAt ? input.expiredAt.toNumber() * 1000 : 0,
+              expiredAt: input.expiredAt
+                ? input.expiredAt.toNumber() * 1000
+                : 0,
             }),
           });
         } catch {

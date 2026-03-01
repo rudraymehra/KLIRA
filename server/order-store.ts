@@ -148,7 +148,10 @@ function createPrismaStore(): OrderStore {
       }
     },
 
-    async getAllOrders(limit: number = 50, offset: number = 0): Promise<TrackedOrder[]> {
+    async getAllOrders(
+      limit: number = 50,
+      offset: number = 0
+    ): Promise<TrackedOrder[]> {
       const rows = await prisma.order.findMany({
         orderBy: { createdAt: "desc" },
         take: limit,
@@ -286,7 +289,10 @@ function createJsonStore(): OrderStore {
       });
     },
 
-    async getAllOrders(limit: number = 50, offset: number = 0): Promise<TrackedOrder[]> {
+    async getAllOrders(
+      limit: number = 50,
+      offset: number = 0
+    ): Promise<TrackedOrder[]> {
       const orders = loadOrders();
       return orders.slice(offset, offset + limit);
     },
@@ -340,7 +346,10 @@ export async function markOrderChecked(
   return store.markOrderChecked(escrowAddress, failed);
 }
 
-export async function getAllOrders(limit: number = 50, offset: number = 0): Promise<TrackedOrder[]> {
+export async function getAllOrders(
+  limit: number = 50,
+  offset: number = 0
+): Promise<TrackedOrder[]> {
   return store.getAllOrders(limit, offset);
 }
 

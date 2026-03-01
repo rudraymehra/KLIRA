@@ -29,7 +29,10 @@ export function getTokenByMint(mint: string): Token | undefined {
   return TOKENS.find((t) => t.mint === mint);
 }
 
-export function formatTokenAmount(amount: number, decimals: number = 4): string {
+export function formatTokenAmount(
+  amount: number,
+  decimals: number = 4
+): string {
   if (amount === 0) return "0";
   if (amount < 0.0001) return amount.toExponential(2);
   return amount.toLocaleString("en-US", {

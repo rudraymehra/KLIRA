@@ -86,7 +86,9 @@ export async function get_swap_instruction(
   const swap = await axios.request(config);
 
   if (swap.data.error || !swap.data.swapInstruction) {
-    throw new Error(`Jupiter swap API error: ${swap.data.error || "missing swapInstruction"}`);
+    throw new Error(
+      `Jupiter swap API error: ${swap.data.error || "missing swapInstruction"}`
+    );
   }
 
   const instruction_data = swap.data.swapInstruction.data;
@@ -130,13 +132,21 @@ export async function determineFillType(
   fill_type: "full" | "partial";
   divisor: number;
 }> {
-  let tryInAmount = safeToNumber(escrow_data.amount.makingAmount, "makingAmount");
-  let tryTakingAmount = safeToNumber(escrow_data.amount.takingAmount, "takingAmount") * 0.999;
+  let tryInAmount = safeToNumber(
+    escrow_data.amount.makingAmount,
+    "makingAmount"
+  );
+  let tryTakingAmount =
+    safeToNumber(escrow_data.amount.takingAmount, "takingAmount") * 0.999;
   let divisor = 1;
 
   let iterations = 0;
   const MAX_ITERATIONS = 20;
-  while (tryInAmount > 0 && tryTakingAmount > 0 && iterations < MAX_ITERATIONS) {
+  while (
+    tryInAmount > 0 &&
+    tryTakingAmount > 0 &&
+    iterations < MAX_ITERATIONS
+  ) {
     iterations++;
     const { outAmount, swapUsdValue } = await get_quote(
       inputMint.toString(),
@@ -298,7 +308,9 @@ export async function get_best_slippage(escrow: Escrow, input_amount: number) {
         logger.debug(`Simulation failed at ${slippage_bps} bps`);
       }
     } catch (err) {
-      logger.debug(`Error at slippage ${slippage_bps}: ${(err as Error).message}`);
+      logger.debug(
+        `Error at slippage ${slippage_bps}: ${(err as Error).message}`
+      );
     }
 
     slippage_bps += 5;

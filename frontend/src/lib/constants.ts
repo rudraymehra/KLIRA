@@ -57,7 +57,8 @@ export const HOW_IT_WORKS = [
   {
     step: 1,
     title: "Connect Wallet",
-    description: "Link your Phantom or Solflare wallet to get started in seconds.",
+    description:
+      "Link your Phantom or Solflare wallet to get started in seconds.",
   },
   {
     step: 2,

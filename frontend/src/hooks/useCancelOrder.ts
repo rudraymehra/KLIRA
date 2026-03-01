@@ -55,7 +55,8 @@ export function useCancelOrder() {
         if (!proof.compressedProof) throw new Error("Missing compressed proof");
         const validityProof = proof.compressedProof;
 
-        if (!compressedAccount.data?.data) throw new Error("Missing escrow account data");
+        if (!compressedAccount.data?.data)
+          throw new Error("Missing escrow account data");
         const escrowData = parseEscrowFromBuffer(
           Buffer.from(compressedAccount.data.data)
         );
@@ -127,7 +128,11 @@ export function useCancelOrder() {
         // Simulate transaction before requesting wallet signature
         const simulation = await rpc.simulateTransaction(tx);
         if (simulation.value.err) {
-          setError(`Transaction simulation failed: ${JSON.stringify(simulation.value.err)}`);
+          setError(
+            `Transaction simulation failed: ${JSON.stringify(
+              simulation.value.err
+            )}`
+          );
           setLoading(false);
           return null;
         }

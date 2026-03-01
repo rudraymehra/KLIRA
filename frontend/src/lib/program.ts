@@ -13,17 +13,33 @@ export const [PROTOCOL_VAULT] = PublicKey.findProgramAddressSync(
 );
 
 // Light Protocol trees
-export const ADDRESS_TREE = pubkey("amt1Ayt45jfbdw5YSo7iz6WZxUmnZsQTYXy82hVwyC2");
-export const ADDRESS_QUEUE = pubkey("aq1S9z4reTSQAdgWHGD2zDaS39sjGrAxbR31vxJ2F4F");
+export const ADDRESS_TREE = pubkey(
+  "amt1Ayt45jfbdw5YSo7iz6WZxUmnZsQTYXy82hVwyC2"
+);
+export const ADDRESS_QUEUE = pubkey(
+  "aq1S9z4reTSQAdgWHGD2zDaS39sjGrAxbR31vxJ2F4F"
+);
 export const STATE_TREE = pubkey("smt6ukQDSPPYHSshQovmiRUjG9jGFq2hW9vgrDFk5Yz");
-export const STATE_QUEUE = pubkey("nfq6uzaNZ5n3EWF4t64M93AWzLGt5dXTikEA9fFRktv");
+export const STATE_QUEUE = pubkey(
+  "nfq6uzaNZ5n3EWF4t64M93AWzLGt5dXTikEA9fFRktv"
+);
 
 // Light Protocol system accounts
-export const LIGHT_SYSTEM_PROGRAM = pubkey("SySTEM1eSU2p4BGQfQpimFEWWSC1XDFeun3Nqzz3rT7");
-export const COMPRESSION_PROGRAM = pubkey("compr6CUsB5m2jS4Y3831ztGSTnDpnKJTKS95d64XVq");
-export const REGISTERED_PROGRAM_PDA = pubkey("35hkDgaAKwMCaxRz2ocSZ6NaUrtKkyNqU6c4RV3tYJRh");
-export const ACCOUNT_COMPRESSION_AUTHORITY = pubkey("HwXnGK3tPkkVY6P439H2p68AxpeuWXd5PcrAxFpbmfbA");
-export const NOOP_PROGRAM = pubkey("noopb9bkMVfRPU8AsbpTUg8AQkHtKwMYZiFUjNRtMmV");
+export const LIGHT_SYSTEM_PROGRAM = pubkey(
+  "SySTEM1eSU2p4BGQfQpimFEWWSC1XDFeun3Nqzz3rT7"
+);
+export const COMPRESSION_PROGRAM = pubkey(
+  "compr6CUsB5m2jS4Y3831ztGSTnDpnKJTKS95d64XVq"
+);
+export const REGISTERED_PROGRAM_PDA = pubkey(
+  "35hkDgaAKwMCaxRz2ocSZ6NaUrtKkyNqU6c4RV3tYJRh"
+);
+export const ACCOUNT_COMPRESSION_AUTHORITY = pubkey(
+  "HwXnGK3tPkkVY6P439H2p68AxpeuWXd5PcrAxFpbmfbA"
+);
+export const NOOP_PROGRAM = pubkey(
+  "noopb9bkMVfRPU8AsbpTUg8AQkHtKwMYZiFUjNRtMmV"
+);
 export const SYSTEM_PROGRAM = pubkey("11111111111111111111111111111111");
 
 // CPI Authority PDA
@@ -33,7 +49,9 @@ export const [CPI_AUTHORITY] = PublicKey.findProgramAddressSync(
 );
 
 // Address Lookup Table
-export const ALT_ADDRESS = pubkey("9NYFyEqPkyXUhkerbGHXUXkvb4qpzeEdHuGpgbgpH1NJ");
+export const ALT_ADDRESS = pubkey(
+  "9NYFyEqPkyXUhkerbGHXUXkvb4qpzeEdHuGpgbgpH1NJ"
+);
 
 // Remaining accounts for init_order (11 accounts)
 export const INIT_REMAINING_ACCOUNTS = [
@@ -63,4 +81,3 @@ export const CLOSE_ACCOUNTS = [
   { pubkey: STATE_TREE, isSigner: false, isWritable: true },
   { pubkey: STATE_QUEUE, isSigner: false, isWritable: true },
 ];
-

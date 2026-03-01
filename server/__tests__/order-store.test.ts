@@ -156,10 +156,22 @@ describe("addOrder", () => {
 
 describe("getOpenOrders", () => {
   it("only returns orders with status 'open'", async () => {
-    const open = makeOrder({ status: "open", escrowAddress: "OpenAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" });
-    const filled = makeOrder({ status: "filled", escrowAddress: "FillAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" });
-    const expired = makeOrder({ status: "expired", escrowAddress: "ExprAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" });
-    const cancelled = makeOrder({ status: "cancelled", escrowAddress: "CancAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" });
+    const open = makeOrder({
+      status: "open",
+      escrowAddress: "OpenAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    });
+    const filled = makeOrder({
+      status: "filled",
+      escrowAddress: "FillAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    });
+    const expired = makeOrder({
+      status: "expired",
+      escrowAddress: "ExprAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    });
+    const cancelled = makeOrder({
+      status: "cancelled",
+      escrowAddress: "CancAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    });
 
     seedStore([open, filled, expired, cancelled]);
 
@@ -171,7 +183,10 @@ describe("getOpenOrders", () => {
 
   it("returns empty array when no open orders exist", async () => {
     seedStore([
-      makeOrder({ status: "filled", escrowAddress: "FillAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" }),
+      makeOrder({
+        status: "filled",
+        escrowAddress: "FillAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      }),
     ]);
     expect(await getOpenOrders()).toHaveLength(0);
   });
@@ -222,7 +237,10 @@ describe("updateOrderStatus", () => {
 
   it("does nothing when escrow address is not found", async () => {
     seedStore([makeOrder()]);
-    await updateOrderStatus("NonExistentAddress1111111111111111111111111", "filled");
+    await updateOrderStatus(
+      "NonExistentAddress1111111111111111111111111",
+      "filled"
+    );
     // saveOrders is never called because the order was not found.
     expect(mockedFs.writeFileSync).not.toHaveBeenCalled();
   });
@@ -284,9 +302,18 @@ describe("getOrdersByWallet", () => {
     const walletB = "WalletBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB";
 
     seedStore([
-      makeOrder({ maker: walletA, escrowAddress: "Escrow1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" }),
-      makeOrder({ maker: walletB, escrowAddress: "Escrow2AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" }),
-      makeOrder({ maker: walletA, escrowAddress: "Escrow3AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" }),
+      makeOrder({
+        maker: walletA,
+        escrowAddress: "Escrow1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      }),
+      makeOrder({
+        maker: walletB,
+        escrowAddress: "Escrow2AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      }),
+      makeOrder({
+        maker: walletA,
+        escrowAddress: "Escrow3AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      }),
     ]);
 
     const result = await getOrdersByWallet(walletA);
@@ -296,7 +323,9 @@ describe("getOrdersByWallet", () => {
 
   it("returns empty array when no orders match the wallet", async () => {
     seedStore([makeOrder()]);
-    const result = await getOrdersByWallet("NoMatchAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
+    const result = await getOrdersByWallet(
+      "NoMatchAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    );
     expect(result).toHaveLength(0);
   });
 });

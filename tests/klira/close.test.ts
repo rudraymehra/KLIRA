@@ -28,7 +28,8 @@ describe("klira", () => {
       .instruction();
 
     const rpc = new Connection(
-      process.env.TEST_MAINNET_RPC_URL || "https://mainnet.helius-rpc.com/?api-key=YOUR_API_KEY"
+      process.env.TEST_MAINNET_RPC_URL ||
+        "https://mainnet.helius-rpc.com/?api-key=YOUR_API_KEY"
     );
 
     const latestBlockhash = await rpc.getLatestBlockhash();

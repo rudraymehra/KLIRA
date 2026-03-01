@@ -20,7 +20,10 @@ export function useKliraProgram() {
     return new Program(IDL, provider);
   }, [connection, publicKeyStr]);
 
-  const rpc = useMemo(() => createRpc(SOLANA_RPC_URL, SOLANA_RPC_URL, SOLANA_RPC_URL), []);
+  const rpc = useMemo(
+    () => createRpc(SOLANA_RPC_URL, SOLANA_RPC_URL, SOLANA_RPC_URL),
+    []
+  );
 
   return { program, rpc, wallet: anchorWallet, connection };
 }

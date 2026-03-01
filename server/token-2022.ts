@@ -99,7 +99,9 @@ export async function get_rent_quote(mint: PublicKey) {
       let iterations = 0;
       while (currentOutput <= targetRent) {
         if (++iterations > MAX_ITERATIONS) {
-          throw new Error("get_rent_quote: exceeded max iterations while increasing input");
+          throw new Error(
+            "get_rent_quote: exceeded max iterations while increasing input"
+          );
         }
         currentInput += step;
         const { outAmount: testOutAmount, inAmount: testInAmount } =
@@ -119,7 +121,9 @@ export async function get_rent_quote(mint: PublicKey) {
       let iterations = 0;
       while (currentOutput > targetRent) {
         if (++iterations > MAX_ITERATIONS) {
-          throw new Error("get_rent_quote: exceeded max iterations while decreasing input");
+          throw new Error(
+            "get_rent_quote: exceeded max iterations while decreasing input"
+          );
         }
         currentInput -= step;
         if (currentInput <= 0n) break;

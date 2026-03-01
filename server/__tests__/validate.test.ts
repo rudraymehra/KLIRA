@@ -80,9 +80,7 @@ describe("createOrderSchema - makingAmount", () => {
     if (!result.success) {
       const messages = result.error.issues.map((i) => i.message);
       expect(messages).toEqual(
-        expect.arrayContaining([
-          expect.stringContaining("greater than 0"),
-        ])
+        expect.arrayContaining([expect.stringContaining("greater than 0")])
       );
     }
   });
@@ -121,9 +119,7 @@ describe("createOrderSchema - makingAmount", () => {
 
 describe("createOrderSchema - expiredAt", () => {
   it("accepts expiredAt: 0 (no expiry)", () => {
-    const result = createOrderSchema.safeParse(
-      validPayload({ expiredAt: 0 })
-    );
+    const result = createOrderSchema.safeParse(validPayload({ expiredAt: 0 }));
     expect(result.success).toBe(true);
   });
 
@@ -144,17 +140,13 @@ describe("createOrderSchema - expiredAt", () => {
     if (!result.success) {
       const messages = result.error.issues.map((i) => i.message);
       expect(messages).toEqual(
-        expect.arrayContaining([
-          expect.stringContaining("future timestamp"),
-        ])
+        expect.arrayContaining([expect.stringContaining("future timestamp")])
       );
     }
   });
 
   it("rejects negative expiredAt", () => {
-    const result = createOrderSchema.safeParse(
-      validPayload({ expiredAt: -1 })
-    );
+    const result = createOrderSchema.safeParse(validPayload({ expiredAt: -1 }));
     expect(result.success).toBe(false);
   });
 
@@ -192,7 +184,7 @@ describe("validateBody middleware", () => {
     middleware(req, res, next);
 
     expect(next).toHaveBeenCalled();
-    expect((res.status as jest.Mock)).not.toHaveBeenCalled();
+    expect(res.status as jest.Mock).not.toHaveBeenCalled();
   });
 
   it("returns 400 with details for an invalid payload", () => {

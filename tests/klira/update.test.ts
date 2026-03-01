@@ -46,7 +46,8 @@ describe("klira/update_order", () => {
   );
 
   const url =
-    process.env.TEST_DEVNET_RPC_URL || "https://devnet.helius-rpc.com/?api-key=YOUR_API_KEY";
+    process.env.TEST_DEVNET_RPC_URL ||
+    "https://devnet.helius-rpc.com/?api-key=YOUR_API_KEY";
 
   const rpc = createRpc(url, url, url);
 

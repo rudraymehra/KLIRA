@@ -93,7 +93,9 @@ export const requestLogger = (
       metrics.totalRequests++;
       metrics.requestCount++;
       metrics.averageResponseTime =
-        (metrics.averageResponseTime * (metrics.requestCount - 1) + responseTime) / metrics.requestCount;
+        (metrics.averageResponseTime * (metrics.requestCount - 1) +
+          responseTime) /
+        metrics.requestCount;
       metrics.lastActivity = new Date().toISOString();
 
       logger.info("Request completed", {
@@ -208,7 +210,9 @@ export function safeToNumber(bn: BN, label?: string): number {
   const num = Number(str);
   if (!Number.isSafeInteger(num) && num !== 0) {
     throw new Error(
-      `${label ?? "Value"} ${str} exceeds safe integer range (${Number.MAX_SAFE_INTEGER})`
+      `${label ?? "Value"} ${str} exceeds safe integer range (${
+        Number.MAX_SAFE_INTEGER
+      })`
     );
   }
   return num;

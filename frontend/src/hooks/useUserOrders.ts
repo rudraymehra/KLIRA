@@ -18,7 +18,10 @@ export function useUserOrders() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const rpc = useMemo(() => createRpc(SOLANA_RPC_URL, SOLANA_RPC_URL, SOLANA_RPC_URL), []);
+  const rpc = useMemo(
+    () => createRpc(SOLANA_RPC_URL, SOLANA_RPC_URL, SOLANA_RPC_URL),
+    []
+  );
 
   const refreshOrders = useCallback(async () => {
     if (!publicKey) {

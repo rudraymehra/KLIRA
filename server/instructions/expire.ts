@@ -19,11 +19,7 @@ function getProtocolConfig() {
   }
   return _protocolConfig;
 }
-import {
-  ADDRESS_QUEUE,
-  ADDRESS_TREE,
-  CLOSE_ACCOUNTS,
-} from "../lib/accounts";
+import { ADDRESS_QUEUE, ADDRESS_TREE, CLOSE_ACCOUNTS } from "../lib/accounts";
 import { retryOperation } from "../utils";
 
 let ALT_CACHE: AddressLookupTableAccount[];

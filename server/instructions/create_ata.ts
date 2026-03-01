@@ -19,11 +19,7 @@ function getProtocolConfig() {
   }
   return _protocolConfig;
 }
-import {
-  ADDRESS_QUEUE,
-  ADDRESS_TREE,
-  CLOSE_ACCOUNTS,
-} from "../lib/accounts";
+import { ADDRESS_QUEUE, ADDRESS_TREE, CLOSE_ACCOUNTS } from "../lib/accounts";
 import { Escrow } from "../lib/escrow";
 import { get_swap_instruction } from "../jup";
 import BN from "bn.js";
@@ -89,7 +85,9 @@ export async function create_ata(
   } catch (err) {
     const amounts = await get_rent_quote(escrow_data.tokens.inputMint);
     if (!amounts) {
-      throw new Error("Failed to calculate rent quote for input mint ATA creation");
+      throw new Error(
+        "Failed to calculate rent quote for input mint ATA creation"
+      );
     }
 
     const result = await get_swap_instruction(
@@ -124,7 +122,9 @@ export async function create_ata(
   } catch {
     const rentQuote = await get_rent_quote(escrow_data.tokens.outputMint);
     if (!rentQuote) {
-      throw new Error("Failed to calculate rent quote for output mint ATA creation");
+      throw new Error(
+        "Failed to calculate rent quote for output mint ATA creation"
+      );
     }
     taking_amount = rentQuote.inAmount;
   }

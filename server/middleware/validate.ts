@@ -82,7 +82,8 @@ export function validateQuery(schema: z.ZodSchema) {
       res.status(400).json({ error: "Validation failed", details: errors });
       return;
     }
-    req.query = result.data as typeof req.query;
+    // Store validated data in res.locals (req.query is read-only in newer Express)
+    res.locals.validatedQuery = result.data;
     next();
   };
 }

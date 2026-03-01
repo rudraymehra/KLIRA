@@ -43,7 +43,7 @@ RUN mkdir -p data logs && chown -R node:node /app/data /app/logs
 
 USER node
 
-CMD ["node", "dist/server/app.js"]
+CMD ["sh", "-c", "npx prisma migrate deploy && node dist/server/app.js"]
 
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
   CMD wget -qO- http://localhost:4000/v1/health || exit 1

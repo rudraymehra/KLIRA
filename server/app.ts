@@ -193,9 +193,10 @@ v1.get(
   validateQuery(orderQuerySchema),
   async (req, res) => {
     try {
-      const { wallet } = req.query;
-      const limit = Math.min(Math.max(parseInt(req.query.limit as string) || 100, 1), 1000);
-      const offset = Math.max(parseInt(req.query.offset as string) || 0, 0);
+      const query = res.locals.validatedQuery || req.query;
+      const { wallet } = query;
+      const limit = Math.min(Math.max(parseInt(query.limit as string) || 100, 1), 1000);
+      const offset = Math.max(parseInt(query.offset as string) || 0, 0);
 
       if (wallet) {
         const orders = await getOrdersByWallet(wallet as string);

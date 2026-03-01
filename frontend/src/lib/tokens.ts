@@ -13,41 +13,10 @@ export const TOKENS: Token[] = [
   {
     symbol: "USDC",
     name: "USD Coin",
-    mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    // Devnet: custom test mint; Mainnet: EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v
+    mint: "2t6JyM65AHxBUaSBAhwZdWMDu8VbvqhRLAoa4f3xqVht",
     decimals: 6,
     icon: "$",
-    price: 0,
-  },
-  {
-    symbol: "USDT",
-    name: "Tether USD",
-    mint: "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
-    decimals: 6,
-    icon: "₮",
-    price: 0,
-  },
-  {
-    symbol: "JUP",
-    name: "Jupiter",
-    mint: "JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN",
-    decimals: 6,
-    icon: "♃",
-    price: 0,
-  },
-  {
-    symbol: "BONK",
-    name: "Bonk",
-    mint: "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263",
-    decimals: 5,
-    icon: "🐕",
-    price: 0,
-  },
-  {
-    symbol: "WIF",
-    name: "dogwifhat",
-    mint: "EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm",
-    decimals: 6,
-    icon: "🎩",
     price: 0,
   },
 ];

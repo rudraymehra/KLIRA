@@ -1,8 +1,8 @@
 import { TOKENS, getToken, formatTokenAmount } from "@/lib/tokens";
 
 describe("TOKENS", () => {
-  it("contains at least 6 tokens", () => {
-    expect(TOKENS.length).toBeGreaterThanOrEqual(6);
+  it("contains at least 2 tokens", () => {
+    expect(TOKENS.length).toBeGreaterThanOrEqual(2);
   });
 
   it("has SOL as the first token", () => {
@@ -73,10 +73,8 @@ describe("getToken", () => {
     expect(getToken("Sol")).toBeUndefined();
   });
 
-  it("returns BONK", () => {
-    const token = getToken("BONK");
-    expect(token).toBeDefined();
-    expect(token!.decimals).toBe(5);
+  it("returns undefined for removed token", () => {
+    expect(getToken("BONK")).toBeUndefined();
   });
 });
 

@@ -34,6 +34,7 @@ pub fn update_config(ctx: Context<UpdateConfig>, params: UpdateConfigParams) -> 
     }
 
     if let Some(fee_account) = params.fee_account {
+        require!(fee_account != Pubkey::default(), CustomError::InvalidAccount);
         config.fee_account = fee_account;
     }
 

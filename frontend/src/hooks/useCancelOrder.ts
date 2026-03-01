@@ -20,7 +20,7 @@ export function useCancelOrder() {
 
   const cancelOrder = useCallback(
     async (escrowAddress: string): Promise<string | null> => {
-      if (!program || !wallet.publicKey || !wallet.signTransaction) {
+      if (!program || !wallet?.publicKey || !wallet?.signTransaction) {
         setError("Wallet not connected");
         return null;
       }
@@ -123,11 +123,24 @@ export function useCancelOrder() {
         }).compileToV0Message();
 
         const tx = new VersionedTransaction(message);
+
+        // Simulate transaction before requesting wallet signature
+        const simulation = await rpc.simulateTransaction(tx);
+        if (simulation.value.err) {
+          setError(`Transaction simulation failed: ${JSON.stringify(simulation.value.err)}`);
+          setLoading(false);
+          return null;
+        }
+
         const signed = await wallet.signTransaction(tx);
         const sig = await rpc.sendRawTransaction(signed.serialize());
 
         // Wait for transaction confirmation before updating state
-        await rpc.confirmTransaction(sig);
+        await rpc.confirmTransaction({
+          signature: sig,
+          blockhash: latestBlockhash.blockhash,
+          lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
+        });
 
         // Update localStorage
         updateOrderStatus(escrowAddress, "cancelled");

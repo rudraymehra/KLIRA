@@ -28,10 +28,12 @@ function getDecimalsForSymbol(symbol: string): number {
 }
 
 function formatAmount(raw: string, decimals: number = 6): string {
-  const num = Number(raw) / 10 ** decimals;
-  if (num === 0) return "0";
-  if (num < 0.0001) return num.toExponential(2);
-  return num.toLocaleString("en-US", { maximumFractionDigits: 4 });
+  if (!raw || raw === "0") return "0";
+  const padded = raw.padStart(decimals + 1, "0");
+  const intPart = padded.slice(0, padded.length - decimals);
+  const fracPart = padded.slice(padded.length - decimals).replace(/0+$/, "");
+  const formattedInt = Number(intPart).toLocaleString("en-US");
+  return fracPart ? `${formattedInt}.${fracPart.slice(0, 4)}` : formattedInt;
 }
 
 export default function OrderCard({

@@ -21,6 +21,9 @@ pub struct InitializeConfig<'info> {
     pub system_program: Program<'info, System>,
 }
 
+// IMPORTANT: This can only be called once due to the `init` constraint on the PDA.
+// The first caller becomes the protocol authority. After initialization, authority
+// can only be transferred via the two-step transfer_authority / accept_authority flow.
 pub fn initialize_config(ctx: Context<InitializeConfig>) -> Result<()> {
     let config = &mut ctx.accounts.protocol_config;
     config.authority = ctx.accounts.payer.key();

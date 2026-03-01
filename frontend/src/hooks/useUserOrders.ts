@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { bn } from "@lightprotocol/stateless.js";
 import { PublicKey } from "@solana/web3.js";
@@ -10,13 +10,15 @@ import {
   updateOrderStatus,
   type StoredOrder,
 } from "@/lib/order-store";
-import { RPC_URL } from "@/lib/program";
+import { SOLANA_RPC_URL } from "@/lib/constants";
 
 export function useUserOrders() {
   const { publicKey } = useWallet();
   const [orders, setOrders] = useState<StoredOrder[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const rpc = useMemo(() => createRpc(SOLANA_RPC_URL, SOLANA_RPC_URL, SOLANA_RPC_URL), []);
 
   const refreshOrders = useCallback(async () => {
     if (!publicKey) {
@@ -31,7 +33,6 @@ export function useUserOrders() {
       const stored = getOrdersForWallet(publicKey.toBase58());
 
       // Verify open orders on-chain
-      const rpc = createRpc(RPC_URL, RPC_URL, RPC_URL);
       const verified = await Promise.all(
         stored.map(async (order) => {
           if (order.status !== "open") return order;
@@ -68,11 +69,18 @@ export function useUserOrders() {
     } finally {
       setLoading(false);
     }
-  }, [publicKey]);
+  }, [publicKey, rpc]);
 
   useEffect(() => {
     refreshOrders();
   }, [refreshOrders]);
+
+  // Auto-refresh open orders every 30 seconds
+  useEffect(() => {
+    if (!publicKey) return;
+    const interval = setInterval(refreshOrders, 30_000);
+    return () => clearInterval(interval);
+  }, [publicKey, refreshOrders]);
 
   return { orders, loading, error, refreshOrders };
 }

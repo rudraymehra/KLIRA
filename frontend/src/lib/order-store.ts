@@ -16,6 +16,7 @@ export interface StoredOrder {
 }
 
 const STORAGE_KEY = "klira_orders";
+const MAX_STORED_ORDERS = 500;
 
 export function getStoredOrders(): StoredOrder[] {
   if (typeof window === "undefined") return [];
@@ -30,7 +31,14 @@ export function getStoredOrders(): StoredOrder[] {
 export function saveOrder(order: StoredOrder): void {
   const orders = getStoredOrders();
   orders.unshift(order);
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(orders));
+  const trimmed = orders.slice(0, MAX_STORED_ORDERS);
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(trimmed));
+  } catch {
+    // localStorage full — trim more aggressively
+    const minimal = trimmed.slice(0, 100);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(minimal));
+  }
 }
 
 export function updateOrderStatus(

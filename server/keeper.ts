@@ -1,11 +1,12 @@
 // Klira Server - Keeper Service
 // Automatically monitors open orders, fills when price conditions are met,
 // and expires orders past their expiration time.
-import { PublicKey, VersionedTransaction } from "@solana/web3.js";
+import { Connection, PublicKey, VersionedTransaction } from "@solana/web3.js";
 import { BN } from "@coral-xyz/anchor";
 import { bn } from "@lightprotocol/stateless.js";
 
 import { payer, rpc, SOL_MINT } from "./app";
+import { acquireOrderLock, releaseOrderLock } from "./lib/order-lock";
 import {
   getOpenOrders,
   updateOrderStatus,
@@ -26,7 +27,9 @@ import {
   calculate_target_ratio,
   logger,
   metrics,
+  ratioMet,
   retryOperation,
+  safeToNumber,
 } from "./utils";
 import { bot } from "./alert";
 
@@ -93,6 +96,20 @@ async function processExpiredOrder(order: TrackedOrder): Promise<boolean> {
     tx.sign([payer]);
     const signature = await rpc.sendTransaction(tx);
 
+    // Confirm the transaction before updating status
+    const confirmConnection = new Connection(process.env.RPC_URL!);
+    try {
+      const latestBlockhash = await confirmConnection.getLatestBlockhash();
+      await confirmConnection.confirmTransaction({
+        signature,
+        blockhash: latestBlockhash.blockhash,
+        lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
+      }, "confirmed");
+    } catch (confirmErr) {
+      logger.error("Transaction failed to confirm", { signature, error: (confirmErr as Error).message });
+      throw new Error(`Transaction sent but not confirmed: ${signature}`);
+    }
+
     await updateOrderStatus(order.escrowAddress, "expired", signature);
     metrics.successfulExpires++;
 
@@ -150,13 +167,13 @@ async function processFillableOrder(order: TrackedOrder): Promise<boolean> {
     );
 
     const target_ratio = await calculate_target_ratio(
-      escrow_data.amount.makingAmount.toNumber(),
-      escrow_data.amount.takingAmount.toNumber(),
+      safeToNumber(escrow_data.amount.makingAmount, "makingAmount"),
+      safeToNumber(escrow_data.amount.takingAmount, "takingAmount"),
       inputMint.toString(),
       outputMint.toString()
     );
 
-    if (Number(target_ratio) > current_ratio) {
+    if (!ratioMet(target_ratio, current_ratio)) {
       // Price not favorable yet
       return false;
     }
@@ -191,9 +208,10 @@ async function processFillableOrder(order: TrackedOrder): Promise<boolean> {
       inputMint,
       outputMint
     );
-    const swapAmount = escrow_data.amount.makingAmount
-      .div(new BN(fill_data.divisor))
-      .toNumber();
+    const swapAmount = safeToNumber(
+      escrow_data.amount.makingAmount.div(new BN(fill_data.divisor)),
+      "swapAmount"
+    );
 
     // Find best slippage
     const { best_slippage, excludedDexLabels } = await get_best_slippage(
@@ -264,6 +282,20 @@ async function processFillableOrder(order: TrackedOrder): Promise<boolean> {
     tx.sign([payer]);
     const sig = await rpc.sendTransaction(tx);
 
+    // Confirm the transaction before updating status
+    const confirmConnection = new Connection(process.env.RPC_URL!);
+    try {
+      const latestBlockhash = await confirmConnection.getLatestBlockhash();
+      await confirmConnection.confirmTransaction({
+        signature: sig,
+        blockhash: latestBlockhash.blockhash,
+        lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
+      }, "confirmed");
+    } catch (confirmErr) {
+      logger.error("Transaction failed to confirm", { signature: sig, error: (confirmErr as Error).message });
+      throw new Error(`Transaction sent but not confirmed: ${sig}`);
+    }
+
     await updateOrderStatus(order.escrowAddress, "filled", sig);
     metrics.successfulFills++;
 
@@ -318,6 +350,11 @@ async function keeperLoop() {
         continue;
       }
 
+      if (!acquireOrderLock(order.escrowAddress)) {
+        logger.debug("Order locked, skipping", { escrowAddress: order.escrowAddress });
+        continue;
+      }
+
       try {
         // Check if expired
         if (order.expiredAt > 0 && order.expiredAt <= Date.now()) {
@@ -338,6 +375,8 @@ async function keeperLoop() {
           error: (error as Error).message,
         });
         await markOrderChecked(order.escrowAddress, true);
+      } finally {
+        releaseOrderLock(order.escrowAddress);
       }
     }
   } catch (error) {

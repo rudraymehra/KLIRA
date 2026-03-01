@@ -1,25 +1,26 @@
 "use client";
 
 import { useMemo } from "react";
-import { useConnection, useWallet } from "@solana/wallet-adapter-react";
+import { useConnection, useAnchorWallet } from "@solana/wallet-adapter-react";
 import { AnchorProvider, Program } from "@coral-xyz/anchor";
 import { createRpc } from "@lightprotocol/stateless.js";
 import { IDL } from "@/lib/idl";
-import { RPC_URL } from "@/lib/program";
+import { SOLANA_RPC_URL } from "@/lib/constants";
 
 export function useKliraProgram() {
   const { connection } = useConnection();
-  const wallet = useWallet();
+  const anchorWallet = useAnchorWallet();
+  const publicKeyStr = anchorWallet?.publicKey?.toBase58() ?? null;
 
   const program = useMemo(() => {
-    if (!wallet.publicKey) return null;
-    const provider = new AnchorProvider(connection, wallet as any, {
+    if (!anchorWallet) return null;
+    const provider = new AnchorProvider(connection, anchorWallet, {
       commitment: "confirmed",
     });
     return new Program(IDL, provider);
-  }, [connection, wallet?.publicKey?.toString()]);
+  }, [connection, publicKeyStr]);
 
-  const rpc = useMemo(() => createRpc(RPC_URL, RPC_URL, RPC_URL), []);
+  const rpc = useMemo(() => createRpc(SOLANA_RPC_URL, SOLANA_RPC_URL, SOLANA_RPC_URL), []);
 
-  return { program, rpc, wallet, connection };
+  return { program, rpc, wallet: anchorWallet, connection };
 }

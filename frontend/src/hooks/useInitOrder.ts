@@ -32,7 +32,7 @@ export function useInitOrder() {
 
   const initOrder = useCallback(
     async (input: InitOrderInput): Promise<string | null> => {
-      if (!program || !wallet.publicKey || !wallet.signTransaction) {
+      if (!program || !wallet?.publicKey || !wallet?.signTransaction) {
         setError("Wallet not connected");
         return null;
       }
@@ -41,7 +41,9 @@ export function useInitOrder() {
       setError(null);
 
       try {
-        const uniqueId = new BN(Date.now() * 1000 + Math.floor(Math.random() * 1000));
+        const randomBytes = new Uint8Array(8);
+        crypto.getRandomValues(randomBytes);
+        const uniqueId = new BN(randomBytes);
         const maker = wallet.publicKey;
 
         // Detect token program for each mint (supports Token-2022)
@@ -133,7 +135,11 @@ export function useInitOrder() {
         const sig = await rpc.sendRawTransaction(signed.serialize());
 
         // Wait for transaction confirmation before saving state
-        await rpc.confirmTransaction(sig);
+        await rpc.confirmTransaction({
+          signature: sig,
+          blockhash: latestBlockhash.blockhash,
+          lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
+        });
 
         // Save to localStorage
         const storedOrder: StoredOrder = {

@@ -201,7 +201,18 @@ pub fn create_token_account<'info>(
         &args,
         jup_data.in_amount,
         proportional_taking,
-    )
+    )?;
+
+    emit!(CreateAtaEvent {
+        maker: ctx.accounts.maker.key(),
+        input_mint: ctx.accounts.input_mint.key(),
+        output_mint: ctx.accounts.output_mint.key(),
+        unique_id: args.escrow_account.unique_id,
+        making_amount_deducted: jup_data.in_amount,
+        taking_amount_deducted: proportional_taking,
+    });
+
+    Ok(())
 }
 
 fn transfer_tokens<'info>(
@@ -333,4 +344,14 @@ fn light_cpi<'info>(
         .map_err(ProgramError::from)?;
 
     Ok(())
+}
+
+#[event]
+pub struct CreateAtaEvent {
+    pub maker: Pubkey,
+    pub input_mint: Pubkey,
+    pub output_mint: Pubkey,
+    pub unique_id: u64,
+    pub making_amount_deducted: u64,
+    pub taking_amount_deducted: u64,
 }

@@ -119,7 +119,27 @@ pub fn create_token_account<'info>(
 
     transfer_sol_from_vault(&ctx, ata_creation_amount)?;
 
-    light_cpi(&ctx, &args, ata_creation_amount, jup_data.in_amount)
+    light_cpi(&ctx, &args, ata_creation_amount, jup_data.in_amount)?;
+
+    // Calculate proportional taking for event (mirrors light_cpi calculation)
+    let proportional_taking = args.escrow_account
+        .amount
+        .taking_amount
+        .checked_mul(ata_creation_amount)
+        .ok_or(ProgramError::ArithmeticOverflow)?
+        .checked_div(args.escrow_account.amount.making_amount)
+        .ok_or(ProgramError::ArithmeticOverflow)?;
+
+    emit!(CreateAtaWsolEvent {
+        maker: ctx.accounts.maker.key(),
+        input_mint: ctx.accounts.sol_mint.key(),
+        output_mint: ctx.accounts.output_mint.key(),
+        unique_id: args.escrow_account.unique_id,
+        making_amount_deducted: ata_creation_amount,
+        taking_amount_deducted: proportional_taking,
+    });
+
+    Ok(())
 }
 
 fn light_cpi<'info>(
@@ -236,4 +256,14 @@ pub fn transfer_sol_from_vault<'info>(
         amount,
         ctx.accounts.sol_mint.decimals,
     )
+}
+
+#[event]
+pub struct CreateAtaWsolEvent {
+    pub maker: Pubkey,
+    pub input_mint: Pubkey,
+    pub output_mint: Pubkey,
+    pub unique_id: u64,
+    pub making_amount_deducted: u64,
+    pub taking_amount_deducted: u64,
 }

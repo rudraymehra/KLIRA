@@ -21,6 +21,9 @@ jobs:
       - name: Install root dependencies
         run: npm ci
 
+      - name: Generate Prisma client
+        run: npx prisma generate
+
       - name: Type check server
         run: npx tsc --noEmit
 
@@ -48,6 +51,9 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate
 
       - name: Run server tests
         run: npx jest --config jest.config.server.js --ci --coverage
@@ -114,16 +120,28 @@ jobs:
           node-version: 20
           cache: npm
 
-      - name: Audit root dependencies
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Audit root dependencies (critical)
+        run: npm audit --omit=dev --audit-level=critical
+
+      - name: Audit root dependencies (all - informational)
         run: npm audit --omit=dev || true
+        continue-on-error: true
 
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm ci
 
-      - name: Audit frontend dependencies
+      - name: Audit frontend dependencies (critical)
+        working-directory: frontend
+        run: npm audit --omit=dev --audit-level=critical
+
+      - name: Audit frontend dependencies (all - informational)
         working-directory: frontend
         run: npm audit --omit=dev || true
+        continue-on-error: true
 
   docker-build:
     name: Docker Build
@@ -157,3 +175,4 @@ jobs:
         env:
           NEXT_PUBLIC_SOLANA_RPC_URL: https://api.devnet.solana.com
           NEXT_PUBLIC_SOLANA_NETWORK: devnet
+          NEXT_PUBLIC_API_URL: http://localhost:4000

@@ -16,8 +16,10 @@ import express, { Router } from "express";
 import helmet from "helmet";
 import { bn, createRpc } from "@lightprotocol/stateless.js";
 import { parseEscrowFromBuffer } from "./lib/escrow";
+import { acquireOrderLock, releaseOrderLock } from "./lib/order-lock";
 import {
   determineFillType,
+  ensureDexLabelsLoaded,
   get_best_slippage,
   get_price,
   get_swap_instruction,
@@ -30,13 +32,16 @@ import {
   errorHandler,
   logger,
   metrics,
+  ratioMet,
   requestLogger,
   retryOperation,
+  safeToNumber,
 } from "./utils";
-import { bot } from "./alert";
+import { bot, stopAlerts } from "./alert";
 import {
   addOrder,
   getAllOrders,
+  getOrderCount,
   getOrdersByWallet,
   updateOrderStatus,
   type TrackedOrder,
@@ -67,6 +72,10 @@ if (!process.env.KEY) {
 if (!process.env.RPC_URL) {
   logger.error("Missing required environment variable: RPC_URL");
   process.exit(1);
+}
+
+if (!process.env.KEEPER_API_KEY) {
+  logger.warn("KEEPER_API_KEY not set — fill/expire endpoints will reject all requests");
 }
 
 const url = process.env.RPC_URL;
@@ -187,13 +196,16 @@ v1.get(
     const limit = Math.min(Math.max(parseInt(req.query.limit as string) || 100, 1), 1000);
     const offset = Math.max(parseInt(req.query.offset as string) || 0, 0);
 
-    let orders: TrackedOrder[];
     if (wallet) {
-      orders = await getOrdersByWallet(wallet as string);
+      const orders = await getOrdersByWallet(wallet as string);
+      res.json({ orders: orders.slice(offset, offset + limit), total: orders.length, limit, offset });
     } else {
-      orders = await getAllOrders();
+      const [orders, total] = await Promise.all([
+        getAllOrders(limit, offset),
+        getOrderCount(),
+      ]);
+      res.json({ orders, total, limit, offset });
     }
-    res.json(orders.slice(offset, offset + limit));
   }
 );
 
@@ -218,7 +230,6 @@ v1.get("/health", publicLimiter, async (req, res) => {
     res.status(503).json({
       status: "unhealthy",
       timestamp: new Date().toISOString(),
-      error: (error as Error).message,
     });
   }
 });
@@ -243,15 +254,20 @@ v1.post(
     next: express.NextFunction
   ) => {
     const { requestId, startTime } = res.locals;
+    const { order } = req.body;
+    const escrowAddress = order as string;
+
+    if (!acquireOrderLock(escrowAddress)) {
+      res.status(409).json({ error: "Order is currently being processed" });
+      return;
+    }
 
     try {
-      const { order } = req.body;
-
       logger.info("Fill request started", { requestId, order });
 
       let address: PublicKey;
       try {
-        address = new PublicKey(order as string);
+        address = new PublicKey(escrowAddress);
       } catch (e) {
         throw new Error("Invalid order address - not a valid PublicKey");
       }
@@ -280,8 +296,8 @@ v1.post(
         maker: escrow_data.maker.toString(),
         inputMint: inputMint.toString(),
         outputMint: outputMint.toString(),
-        makingAmount: escrow_data.amount.makingAmount.toNumber(),
-        takingAmount: escrow_data.amount.takingAmount.toNumber(),
+        makingAmount: escrow_data.amount.makingAmount.toString(),
+        takingAmount: escrow_data.amount.takingAmount.toString(),
         expiredAt: new Date(expiredAt).toISOString(),
       });
 
@@ -313,7 +329,7 @@ v1.post(
 
         logger.info("Escrow data updated after ATA creation", {
           requestId,
-          updatedMakingAmount: escrow_data.amount.makingAmount.toNumber(),
+          updatedMakingAmount: escrow_data.amount.makingAmount.toString(),
         });
       }
 
@@ -323,13 +339,13 @@ v1.post(
       );
 
       const target_ratio = await calculate_target_ratio(
-        escrow_data.amount.makingAmount.toNumber(),
-        escrow_data.amount.takingAmount.toNumber(),
+        safeToNumber(escrow_data.amount.makingAmount, "makingAmount"),
+        safeToNumber(escrow_data.amount.takingAmount, "takingAmount"),
         inputMint.toString(),
         outputMint.toString()
       );
 
-      if (Number(target_ratio) > current_ratio) {
+      if (!ratioMet(target_ratio, current_ratio)) {
         logger.info("Price conditions not met", {
           targetRatio: target_ratio,
           currentRatio: current_ratio,
@@ -344,9 +360,10 @@ v1.post(
         outputMint
       );
 
-      const swapAmount = escrow_data.amount.makingAmount
-        .div(new BN(fill_data.divisor))
-        .toNumber();
+      const swapAmount = safeToNumber(
+        escrow_data.amount.makingAmount.div(new BN(fill_data.divisor)),
+        "swapAmount"
+      );
 
       const { best_slippage, excludedDexLabels } = await get_best_slippage(
         escrow_data,
@@ -438,10 +455,25 @@ v1.post(
       tx.sign([payer]);
 
       const sig = await rpc.sendTransaction(tx);
+
+      // Confirm the transaction before updating status
+      const confirmConnection = new Connection(process.env.RPC_URL!);
+      try {
+        const latestBlockhash = await confirmConnection.getLatestBlockhash();
+        await confirmConnection.confirmTransaction({
+          signature: sig,
+          blockhash: latestBlockhash.blockhash,
+          lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
+        }, "confirmed");
+      } catch (confirmErr) {
+        logger.error("Transaction failed to confirm", { signature: sig, error: (confirmErr as Error).message });
+        throw new Error(`Transaction sent but not confirmed: ${sig}`);
+      }
+
       const responseTime = performance.now() - startTime;
 
       metrics.successfulFills++;
-      await updateOrderStatus(order as string, "filled", sig);
+      await updateOrderStatus(escrowAddress, "filled", sig);
 
       logger.info("Fill transaction successful", {
         requestId,
@@ -454,6 +486,8 @@ v1.post(
     } catch (error) {
       metrics.failedFills++;
       next(error);
+    } finally {
+      releaseOrderLock(escrowAddress);
     }
   }
 );
@@ -470,14 +504,20 @@ v1.post(
     next: express.NextFunction
   ) => {
     const { requestId, startTime } = res.locals;
-    try {
-      const { order } = req.body;
+    const { order } = req.body;
+    const escrowAddress = order as string;
 
+    if (!acquireOrderLock(escrowAddress)) {
+      res.status(409).json({ error: "Order is currently being processed" });
+      return;
+    }
+
+    try {
       logger.info("Expire request started", { requestId, order });
 
       let address: PublicKey;
       try {
-        address = new PublicKey(order as string);
+        address = new PublicKey(escrowAddress);
       } catch (e) {
         throw new Error("Invalid order address - not a valid PublicKey");
       }
@@ -534,10 +574,24 @@ v1.post(
 
       const signature = await rpc.sendTransaction(tx);
 
+      // Confirm the transaction before updating status
+      const confirmConnection = new Connection(process.env.RPC_URL!);
+      try {
+        const latestBlockhash = await confirmConnection.getLatestBlockhash();
+        await confirmConnection.confirmTransaction({
+          signature,
+          blockhash: latestBlockhash.blockhash,
+          lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
+        }, "confirmed");
+      } catch (confirmErr) {
+        logger.error("Transaction failed to confirm", { signature, error: (confirmErr as Error).message });
+        throw new Error(`Transaction sent but not confirmed: ${signature}`);
+      }
+
       const responseTime = performance.now() - startTime;
 
       metrics.successfulExpires++;
-      await updateOrderStatus(order as string, "expired", signature);
+      await updateOrderStatus(escrowAddress, "expired", signature);
 
       logger.info("Expire transaction successful", {
         requestId,
@@ -550,6 +604,8 @@ v1.post(
     } catch (error) {
       metrics.failedExpires++;
       next(error);
+    } finally {
+      releaseOrderLock(escrowAddress);
     }
   }
 );
@@ -594,16 +650,10 @@ async function verifyDependencies(): Promise<void> {
     });
   }
 
-  // Check Jupiter API
+  // Check Jupiter API and ensure DEX labels are loaded
   try {
-    const res = await fetch(
-      "https://lite-api.jup.ag/swap/v1/program-id-to-label",
-      {
-        signal: AbortSignal.timeout(10000),
-      }
-    );
-    if (!res.ok) throw new Error(`Jupiter API returned ${res.status}`);
-    logger.info("Jupiter API connection OK");
+    await ensureDexLabelsLoaded();
+    logger.info("Jupiter API connection OK — DEX labels loaded");
   } catch (error) {
     logger.warn("Jupiter API health check failed — fills may not work", {
       error: (error as Error).message,
@@ -628,6 +678,9 @@ function gracefulShutdown(signal: string) {
 
   // Stop the keeper loop
   stopKeeper();
+
+  // Stop alert monitoring intervals
+  stopAlerts();
 
   // Give in-flight requests time to complete
   setTimeout(() => {

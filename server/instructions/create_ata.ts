@@ -88,6 +88,9 @@ export async function create_ata(
     alt = result.alt;
   } catch (err) {
     const amounts = await get_rent_quote(escrow_data.tokens.inputMint);
+    if (!amounts) {
+      throw new Error("Failed to calculate rent quote for input mint ATA creation");
+    }
 
     const result = await get_swap_instruction(
       escrow_data.tokens.inputMint.toString(),
@@ -99,7 +102,7 @@ export async function create_ata(
       25
     );
 
-    if (result.outAmount - amounts.rent > 1000) {
+    if (Number(result.outAmount) - Number(amounts.rent) > 1000) {
       throw new Error("Tolerance too high");
     }
 
@@ -108,7 +111,7 @@ export async function create_ata(
     alt = result.alt;
   }
 
-  let taking_amount: any;
+  let taking_amount: string | number | bigint;
   try {
     const { inAmount } = await get_swap_instruction(
       escrow_data.tokens.outputMint.toString(),
@@ -119,8 +122,11 @@ export async function create_ata(
     );
     taking_amount = inAmount;
   } catch {
-    const { inAmount } = await get_rent_quote(escrow_data.tokens.outputMint);
-    taking_amount = inAmount;
+    const rentQuote = await get_rent_quote(escrow_data.tokens.outputMint);
+    if (!rentQuote) {
+      throw new Error("Failed to calculate rent quote for output mint ATA creation");
+    }
+    taking_amount = rentQuote.inAmount;
   }
 
   const instruction = await program.methods

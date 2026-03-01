@@ -64,7 +64,3 @@ export const CLOSE_ACCOUNTS = [
   { pubkey: STATE_QUEUE, isSigner: false, isWritable: true },
 ];
 
-// RPC URL
-export const RPC_URL =
-  process.env.NEXT_PUBLIC_SOLANA_RPC_URL ||
-  "https://api.devnet.solana.com";

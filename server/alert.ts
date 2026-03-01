@@ -30,7 +30,7 @@ let stopTimestamp: number | null = null;
 let alertInterval: NodeJS.Timeout | null = null; // Store interval reference
 
 async function checkEndpoints() {
-  if (!monitoring) return;
+  if (!monitoring || !bot) return;
 
   for (const url of ENDPOINTS) {
     try {
@@ -98,7 +98,14 @@ function stopAlerting() {
   }
 }
 
-setInterval(async () => {
+export function stopAlerts() {
+  monitoring = false;
+  stopAlerting();
+  clearInterval(checkEndpointsInterval);
+  clearInterval(autoResumeInterval);
+}
+
+const autoResumeInterval = setInterval(async () => {
   if (stopTimestamp && Date.now() - stopTimestamp >= AUTO_RESUME_DELAY) {
     try {
       const results = await Promise.all(
@@ -238,9 +245,9 @@ bot.command("code", async (ctx) => {
     const args = ctx.message.text.split(" ").slice(1);
     let maxUses = 1;
 
-    // Check if the first argument is a number.
+    // Check if the first argument is a number (capped between 1 and 10).
     if (args.length > 0 && !isNaN(parseInt(args[0]))) {
-      maxUses = parseInt(args[0]);
+      maxUses = Math.max(1, Math.min(parseInt(args[0]), 10));
     }
 
     const password = process.env.KLIRA_CODE_PASSWORD;
@@ -298,7 +305,7 @@ bot.telegram.setMyCommands([
 ]);
 } // end if (bot)
 
-setInterval(checkEndpoints, CHECK_INTERVAL);
+const checkEndpointsInterval = setInterval(checkEndpoints, CHECK_INTERVAL);
 
 if (bot) {
   bot.launch().catch((err) => {

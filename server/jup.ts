@@ -7,7 +7,7 @@ import {
   createAssociatedTokenAccount,
 } from "@solana/spl-token";
 import { payer, rpc } from "./app";
-import { logger, tokenMap } from "./utils";
+import { logger, safeToNumber, tokenMap } from "./utils";
 
 export async function get_quote(
   input_mint: string,
@@ -59,6 +59,10 @@ export async function get_swap_instruction(
 
   const quote = await axios.get(quote_url, { timeout: 15000 });
 
+  if (quote.data.error) {
+    throw new Error(`Jupiter quote API error: ${quote.data.error}`);
+  }
+
   logger.debug("Route plan", { routePlan: quote.data.routePlan });
 
   let body = {
@@ -80,6 +84,10 @@ export async function get_swap_instruction(
     data: JSON.stringify(body),
   };
   const swap = await axios.request(config);
+
+  if (swap.data.error || !swap.data.swapInstruction) {
+    throw new Error(`Jupiter swap API error: ${swap.data.error || "missing swapInstruction"}`);
+  }
 
   const instruction_data = swap.data.swapInstruction.data;
   const accounts = swap.data.swapInstruction.accounts.map((acc: any) => ({
@@ -122,11 +130,14 @@ export async function determineFillType(
   fill_type: "full" | "partial";
   divisor: number;
 }> {
-  let tryInAmount = escrow_data.amount.makingAmount.toNumber();
-  let tryTakingAmount = escrow_data.amount.takingAmount.toNumber() * 0.999;
+  let tryInAmount = safeToNumber(escrow_data.amount.makingAmount, "makingAmount");
+  let tryTakingAmount = safeToNumber(escrow_data.amount.takingAmount, "takingAmount") * 0.999;
   let divisor = 1;
 
-  while (tryInAmount > 0 && tryTakingAmount > 0) {
+  let iterations = 0;
+  const MAX_ITERATIONS = 20;
+  while (tryInAmount > 0 && tryTakingAmount > 0 && iterations < MAX_ITERATIONS) {
+    iterations++;
     const { outAmount, swapUsdValue } = await get_quote(
       inputMint.toString(),
       outputMint.toString(),
@@ -183,10 +194,19 @@ async function create_fee_ata(mint: PublicKey) {
 
 const PROGRAM_ID_TO_LABEL = new Map<string, string>();
 
-(async () => {
-  await loadProgramLabels();
-})().catch((err) => {
+let dexLabelsPromise: Promise<void> | null = null;
+
+export function ensureDexLabelsLoaded(): Promise<void> {
+  if (!dexLabelsPromise) {
+    dexLabelsPromise = loadProgramLabels();
+  }
+  return dexLabelsPromise;
+}
+
+// Kick off loading immediately but don't block module evaluation
+ensureDexLabelsLoaded().catch((err) => {
   logger.error("Failed to load program labels", { error: err.message });
+  dexLabelsPromise = null; // Allow retry on next call
 });
 
 async function loadProgramLabels(): Promise<void> {
@@ -278,7 +298,7 @@ export async function get_best_slippage(escrow: Escrow, input_amount: number) {
         logger.debug(`Simulation failed at ${slippage_bps} bps`);
       }
     } catch (err) {
-      logger.debug(`Error at slippage ${slippage_bps}: ${err.message}`);
+      logger.debug(`Error at slippage ${slippage_bps}: ${(err as Error).message}`);
     }
 
     slippage_bps += 5;
@@ -292,7 +312,7 @@ export async function get_best_slippage(escrow: Escrow, input_amount: number) {
   logger.debug("Best slippage result", { best_slippage });
   return {
     best_slippage,
-    excludedDexLabels: Array.from(exclude_dexes).map(getDexLabel),
+    excludedDexLabels: Array.from(exclude_dexes),
   };
 }
 

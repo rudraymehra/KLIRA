@@ -6,6 +6,7 @@ import winston from "winston";
 import tokensData from "./../tokens.json";
 import { VersionedTransaction } from "@solana/web3.js";
 import { rpc } from "./app";
+import BN from "bn.js";
 
 const logsDir = path.join(process.cwd(), "logs");
 if (!fs.existsSync(logsDir)) {
@@ -198,6 +199,33 @@ export const tokenMap: Map<string, Token> = new Map(
   tokens.map((t) => [t.id, t])
 );
 
+/**
+ * Safely converts a BN to a JavaScript number.
+ * Throws if the value exceeds Number.MAX_SAFE_INTEGER.
+ */
+export function safeToNumber(bn: BN, label?: string): number {
+  const str = bn.toString();
+  const num = Number(str);
+  if (!Number.isSafeInteger(num) && num !== 0) {
+    throw new Error(
+      `${label ?? "Value"} ${str} exceeds safe integer range (${Number.MAX_SAFE_INTEGER})`
+    );
+  }
+  return num;
+}
+
+/**
+ * Compares a target ratio against a current market ratio with an epsilon
+ * tolerance to avoid false negatives from IEEE 754 floating-point rounding.
+ *
+ * Returns true when the market price meets or exceeds the limit price,
+ * i.e. when `targetRatio <= currentRatio + EPSILON`.
+ */
+export function ratioMet(targetRatio: number, currentRatio: number): boolean {
+  const EPSILON = 1e-12;
+  return targetRatio <= currentRatio + EPSILON;
+}
+
 export async function calculate_target_ratio(
   making_amount: number,
   taking_amount: number,
@@ -242,7 +270,6 @@ async function fetch_token_data(mint: string) {
     tokenProgram: data[0].tokenProgram,
   };
 
-  tokens.push(token);
   tokenMap.set(token.id, token);
 
   return token;

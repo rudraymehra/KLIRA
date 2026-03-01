@@ -272,11 +272,17 @@ pub fn fill<'info>(
                 require!(in_amount >= min_fill, CustomError::FillTooSmall);
             }
 
-            // Calculate pro-rata taking_amount
+            // Calculate pro-rata taking_amount using ceiling division to protect the maker.
+            // Ceiling division: (a + b - 1) / b ensures rounding UP so the maker
+            // never receives less than their fair share on partial fills.
             let taking_amount = escrow_account
                 .amount
                 .taking_amount
                 .checked_mul(in_amount)
+                .ok_or(ProgramError::ArithmeticOverflow)?
+                .checked_add(escrow_account.amount.making_amount)
+                .ok_or(ProgramError::ArithmeticOverflow)?
+                .checked_sub(1)
                 .ok_or(ProgramError::ArithmeticOverflow)?
                 .checked_div(escrow_account.amount.making_amount)
                 .ok_or(ProgramError::ArithmeticOverflow)?;

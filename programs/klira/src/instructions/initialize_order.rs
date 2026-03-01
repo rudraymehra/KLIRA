@@ -192,8 +192,9 @@ pub fn init<'info>(
     escrow.amount.taking_amount = order_args.taking_amount;
     escrow.fee_bps = ctx.accounts.protocol_config.fee_bps;
     escrow.expired_at = order_args.expired_at.unwrap_or(0);
-    escrow.created_at = Clock::get()?.unix_timestamp;
-    escrow.updated_at = Clock::get()?.unix_timestamp;
+    let now = Clock::get()?.unix_timestamp;
+    escrow.created_at = now;
+    escrow.updated_at = now;
 
     let escrow_address =
         Pubkey::new_from_array((*escrow.address()).expect("Address should be valid"));

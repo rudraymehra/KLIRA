@@ -35,12 +35,13 @@ COPY klira.json tokens.json ./
 
 ENV NODE_ENV=production
 ENV PORT=4000
+ENV BIND_ADDRESS=0.0.0.0
 
 EXPOSE 4000
 
-USER node
+RUN mkdir -p data logs && chown -R node:node /app/data /app/logs
 
-RUN mkdir -p data logs
+USER node
 
 CMD ["node", "dist/server/app.js"]
 

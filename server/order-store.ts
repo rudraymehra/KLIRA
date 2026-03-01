@@ -33,7 +33,8 @@ interface OrderStore {
     txSignature?: string
   ): Promise<void>;
   markOrderChecked(escrowAddress: string, failed?: boolean): Promise<void>;
-  getAllOrders(): Promise<TrackedOrder[]>;
+  getAllOrders(limit?: number, offset?: number): Promise<TrackedOrder[]>;
+  getOrderCount(): Promise<number>;
   getOrdersByWallet(wallet: string): Promise<TrackedOrder[]>;
 }
 
@@ -147,11 +148,17 @@ function createPrismaStore(): OrderStore {
       }
     },
 
-    async getAllOrders(): Promise<TrackedOrder[]> {
+    async getAllOrders(limit: number = 50, offset: number = 0): Promise<TrackedOrder[]> {
       const rows = await prisma.order.findMany({
         orderBy: { createdAt: "desc" },
+        take: limit,
+        skip: offset,
       });
       return rows.map(toTrackedOrder);
+    },
+
+    async getOrderCount(): Promise<number> {
+      return prisma.order.count();
     },
 
     async getOrdersByWallet(wallet: string): Promise<TrackedOrder[]> {
@@ -279,8 +286,13 @@ function createJsonStore(): OrderStore {
       });
     },
 
-    async getAllOrders(): Promise<TrackedOrder[]> {
-      return loadOrders();
+    async getAllOrders(limit: number = 50, offset: number = 0): Promise<TrackedOrder[]> {
+      const orders = loadOrders();
+      return orders.slice(offset, offset + limit);
+    },
+
+    async getOrderCount(): Promise<number> {
+      return loadOrders().length;
     },
 
     async getOrdersByWallet(wallet: string): Promise<TrackedOrder[]> {
@@ -328,8 +340,12 @@ export async function markOrderChecked(
   return store.markOrderChecked(escrowAddress, failed);
 }
 
-export async function getAllOrders(): Promise<TrackedOrder[]> {
-  return store.getAllOrders();
+export async function getAllOrders(limit: number = 50, offset: number = 0): Promise<TrackedOrder[]> {
+  return store.getAllOrders(limit, offset);
+}
+
+export async function getOrderCount(): Promise<number> {
+  return store.getOrderCount();
 }
 
 export async function getOrdersByWallet(

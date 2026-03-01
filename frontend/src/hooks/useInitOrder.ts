@@ -265,7 +265,7 @@ export function useInitOrder() {
         return null;
       }
     },
-    [program, rpc, wallet]
+    [program, rpc, wallet, connection]
   );
 
   return { initOrder, loading, error };

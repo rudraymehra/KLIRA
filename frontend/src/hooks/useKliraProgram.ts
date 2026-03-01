@@ -18,6 +18,7 @@ export function useKliraProgram() {
       commitment: "confirmed",
     });
     return new Program(IDL, provider);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [connection, publicKeyStr]);
 
   const rpc = useMemo(

@@ -421,7 +421,7 @@ pub const ACCOUNT_COMPRESSION_AUTHORITY: Pubkey =
 pub const NOOP_PROGRAM: Pubkey = pubkey!("noopb9bkMVfRPU8AsbpTUg8AQkHtKwMYZiFUjNRtMmV");
 pub const SYSTEM_PROGRAM_ID: Pubkey = pubkey!("11111111111111111111111111111111");
 pub const LIGHT_SYSTEM_PROGRAM: Pubkey = pubkey!("SySTEM1eSU2p4BGQfQpimFEWWSC1XDFeun3Nqzz3rT7");
-pub const CPI_AUTHORITY: Pubkey = pubkey!("3odTzpE7FpCgYvFkQDWuNSyEhCeLkgpvMCB8Q3Nrj9T1");
+pub const CPI_AUTHORITY: Pubkey = pubkey!("5Tavg9YJ6QvUhuW64kFuh3vVRABsqsz6bnEaqXozNciN");
 
 pub enum LightAccountSet {
     Init(Pubkey),

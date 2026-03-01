@@ -5,7 +5,7 @@
  * IDL can be found at `target/idl/klira.json`.
  */
 export type Klira = {
-  address: "KLRa8WndxF7bQpYm3V96TjHv2Zke5BscNh4GoCuRf1A";
+  address: "HfrzxYKpAu9beUykRmpSkYMkwnjJ27emUCCEuhZBTUH6";
   metadata: {
     name: "klira";
     version: "0.1.0";
@@ -2975,7 +2975,7 @@ export type Klira = {
     {
       name: "protocolVault";
       type: "pubkey";
-      value: "FFbzGFqJYhxRPTsuAJ8jjjXUTiMhAqZoGRj9x8ZCN6T7";
+      value: "CSWSz23ZLULgpxN77A2gVYFyJtxxJTiEjMCimGRNTEAc";
     },
     {
       name: "protocolVaultBump";

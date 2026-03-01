@@ -11,7 +11,7 @@ pub const TOKEN_ACCOUNT_SIZE: u16 = 165;
 pub const SOL_MINT: Pubkey = pubkey!("So11111111111111111111111111111111111111112");
 
 #[constant]
-pub const PROTOCOL_VAULT: Pubkey = pubkey!("FFbzGFqJYhxRPTsuAJ8jjjXUTiMhAqZoGRj9x8ZCN6T7");
+pub const PROTOCOL_VAULT: Pubkey = pubkey!("CSWSz23ZLULgpxN77A2gVYFyJtxxJTiEjMCimGRNTEAc");
 
 #[constant]
 pub const FEE_ACCOUNT: Pubkey = pubkey!("feeSsye1xpD4zaxVh19n92abi3ZyWngAD47Z3ygPGPA");

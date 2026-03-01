@@ -4,10 +4,10 @@ use anchor_lang::prelude::*;
 use anchor_lang::solana_program::{instruction::Instruction, program::invoke_signed};
 use light_sdk::{cpi::CpiSigner, derive_light_cpi_signer};
 
-declare_id!("KLRa8WndxF7bQpYm3V96TjHv2Zke5BscNh4GoCuRf1A");
+declare_id!("HfrzxYKpAu9beUykRmpSkYMkwnjJ27emUCCEuhZBTUH6");
 
 pub const LIGHT_CPI_SIGNER: CpiSigner =
-    derive_light_cpi_signer!("KLRa8WndxF7bQpYm3V96TjHv2Zke5BscNh4GoCuRf1A");
+    derive_light_cpi_signer!("HfrzxYKpAu9beUykRmpSkYMkwnjJ27emUCCEuhZBTUH6");
 
 pub mod constants;
 pub mod error;

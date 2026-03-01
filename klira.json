@@ -1,5 +1,5 @@
 {
-  "address": "KLRa8WndxF7bQpYm3V96TjHv2Zke5BscNh4GoCuRf1A",
+  "address": "HfrzxYKpAu9beUykRmpSkYMkwnjJ27emUCCEuhZBTUH6",
   "metadata": {
     "name": "klira",
     "version": "0.1.0",
@@ -2169,7 +2169,7 @@
     {
       "name": "PROTOCOL_VAULT",
       "type": "pubkey",
-      "value": "FFbzGFqJYhxRPTsuAJ8jjjXUTiMhAqZoGRj9x8ZCN6T7"
+      "value": "CSWSz23ZLULgpxN77A2gVYFyJtxxJTiEjMCimGRNTEAc"
     },
     {
       "name": "PROTOCOL_VAULT_BUMP",

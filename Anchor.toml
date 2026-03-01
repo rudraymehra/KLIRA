@@ -6,14 +6,17 @@ resolution = true
 skip-lint = false
 
 [programs.localnet]
-klira = "KLRa8WndxF7bQpYm3V96TjHv2Zke5BscNh4GoCuRf1A"
+klira = "HfrzxYKpAu9beUykRmpSkYMkwnjJ27emUCCEuhZBTUH6"
+
+[programs.devnet]
+klira = "HfrzxYKpAu9beUykRmpSkYMkwnjJ27emUCCEuhZBTUH6"
 
 [registry]
 url = "https://api.apr.dev"
 
 [provider]
-cluster = "Localnet"
-wallet = "~/.config/solana/id.json"
+cluster = "Devnet"
+wallet = "./payer.json"
 
 [scripts]
 test = "pnpm exec ts-mocha -p ./tsconfig.json -t 1000000 tests/**/*.ts"

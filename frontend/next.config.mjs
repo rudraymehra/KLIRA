@@ -20,7 +20,7 @@ const nextConfig = {
               "script-src 'self' 'unsafe-eval' 'unsafe-inline'",
               "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
               "font-src 'self' https://fonts.gstatic.com",
-              "connect-src 'self' https://*.helius-rpc.com https://api.devnet.solana.com https://api.mainnet-beta.solana.com https://quote-api.jup.ag https://lite-api.jup.ag wss://*.solana.com http://localhost:*",
+              "connect-src 'self' https://*.helius-rpc.com wss://*.helius-rpc.com https://api.devnet.solana.com https://api.mainnet-beta.solana.com https://quote-api.jup.ag https://lite-api.jup.ag wss://*.solana.com https://*.up.railway.app http://localhost:*",
               "img-src 'self' data: https:",
               "frame-ancestors 'none'",
             ].join('; '),

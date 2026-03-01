@@ -7,7 +7,6 @@ import {
   TransactionMessage,
   VersionedTransaction,
   SystemProgram,
-  LAMPORTS_PER_SOL,
 } from "@solana/web3.js";
 import {
   TOKEN_PROGRAM_ID,
@@ -35,7 +34,7 @@ interface InitOrderInput {
 }
 
 export function useInitOrder() {
-  const { program, rpc, wallet } = useKliraProgram();
+  const { program, rpc, wallet, connection } = useKliraProgram();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -54,6 +53,14 @@ export function useInitOrder() {
         crypto.getRandomValues(randomBytes);
         const uniqueId = new BN(randomBytes);
         const maker = wallet.publicKey;
+
+        // Check wallet balance first
+        const balance = await connection.getBalance(maker);
+        if (balance === 0) {
+          setError("Your wallet has 0 SOL on devnet. Get free SOL at faucet.solana.com");
+          setLoading(false);
+          return null;
+        }
 
         // Detect token program for each mint (supports Token-2022)
         const [inputMintInfo, outputMintInfo] = await Promise.all([
@@ -163,11 +170,13 @@ export function useInitOrder() {
         const tx = new VersionedTransaction(message);
 
         // Simulate transaction before requesting wallet signature
-        const simulation = await rpc.simulateTransaction(tx, { sigVerify: false });
+        const simulation = await connection.simulateTransaction(tx, {
+          sigVerify: false,
+          replaceRecentBlockhash: true,
+        });
         if (simulation.value.err) {
-          const logs = simulation.value.logs?.join("\n") || "";
-          console.error("Simulation failed:", simulation.value.err, "\nLogs:", logs);
-          setError(`Simulation failed: ${JSON.stringify(simulation.value.err)}`);
+          console.error("Simulation failed:", simulation.value.err, simulation.value.logs);
+          setError(`Transaction simulation failed. Please try again.`);
           setLoading(false);
           return null;
         }
